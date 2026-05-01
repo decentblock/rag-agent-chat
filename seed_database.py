@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from werkzeug.security import generate_password_hash
 
+from config import BOOTSTRAP_SUPERUSER
 from extensions import db
 from models import Collection, Permission, Role, Tenant, User
 
@@ -78,11 +79,19 @@ def seed_if_needed(
             username=admin_username,
             password_hash=generate_password_hash(admin_password),
             is_active=True,
+            is_superuser=True,
         )
         user.roles = [admin_role] if admin_role else []
         db.session.add(user)
 
     ensure_default_collection(tenant.id)
+
+    boot_admin = User.query.filter_by(tenant_id=tenant.id, username=admin_username).first()
+    if boot_admin:
+        if BOOTSTRAP_SUPERUSER:
+            boot_admin.is_superuser = True
+        elif not User.query.filter_by(is_superuser=True).first():
+            boot_admin.is_superuser = True
 
     db.session.commit()
 

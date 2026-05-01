@@ -11,7 +11,7 @@
 | **Grounded chat** | **POST /chat** runs a registered **agent** with tenant-safe retrieval. Answers include **citations** (sources). Optional **collection_ids** narrows which collections are searched. |
 | **RBAC** | **Admin**, **Editor**, and **Viewer** roles bundle permissions (`documents:*`, `collections:manage`, `chat:query`, `users:manage`, **`embed:keys`**). Admins have `*`. |
 | **Agent marketplace** | Four built-in agents share the same secure retrieval core but apply different **workflow prompts**. Users pick an agent in the console; preference and JSON **config** persist per user (`UserAgentPreference`). |
-| **Console UI** | Landing page (marketing), **Documentation** (`/docs`), login, and authenticated **dashboard** (overview, agents, chat, library, **embed** snippet). |
+| **Console UI** | Landing page (marketing), **API docs** (`/docs` — Swagger/OpenAPI only), login, authenticated **dashboard**, and **super-admin guides** (product summary + deployment at `/super/guides`). |
 | **Embeddable chat** | **Embed API keys** + **`/api/embed/chat`** + **`static/embed/nexura-chat.js`** let customers mount a floating widget on their sites (CORS via **`EMBED_CORS_ORIGINS`**). |
 
 ## Built-in agents (at a glance)
@@ -34,4 +34,4 @@ Shared config keys (where applicable): `user_instructions`, `response_language`;
 - **Embeddable chat** uses bearer **`nxemb_…`** keys — restrict **`EMBED_CORS_ORIGINS`** and revoke keys if exposed.  
 - Pricing on the marketing site is **illustrative** until billing integration.
 
-For APIs, configuration, database schema, ingestion details, and extension points, see **`docs/TECHNICAL.md`**. For **step-by-step deployment** (production setup, Gunicorn, nginx, backups), see **`docs/DEPLOYMENT.md`**. Both are rendered on **`/docs`** in the running app.
+For **HTTP APIs**, open **`/docs`** (Swagger UI; spec **`/api/openapi.json`**). For **product overview** and **deployment**, platform superusers use **Console → Product & deployment** (`/super/guides`, sourced from **`docs/FEATURES_SUMMARY.md`** and **`docs/DEPLOYMENT.md`**). For full architecture and schema, **Console → Technical reference** (`/super/technical`, **`docs/TECHNICAL.md`**).

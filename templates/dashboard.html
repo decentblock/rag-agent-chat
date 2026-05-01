@@ -9,46 +9,7 @@
 <div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" hidden aria-hidden="true"></div>
 
 <div class="app-shell">
-  <aside class="sidebar" aria-label="Workspace navigation">
-    <div class="sidebar-brand">
-      <span class="logo-mark" aria-hidden="true">N</span>
-      <span>Nexura</span>
-    </div>
-    <div class="console-home">
-      <a href="{{ url_for('index') }}">← Marketing site</a>
-    </div>
-    <nav class="nav">
-      <button type="button" class="nav-item active" data-tab="overview" aria-current="page">
-        <span class="nav-icon" aria-hidden="true">◎</span>
-        Overview
-      </button>
-      <button type="button" class="nav-item" data-tab="agents">
-        <span class="nav-icon" aria-hidden="true">◇</span>
-        Agents
-      </button>
-      <button type="button" class="nav-item" data-tab="chat">
-        <span class="nav-icon" aria-hidden="true">💬</span>
-        Chat
-      </button>
-      <button type="button" class="nav-item" data-tab="library">
-        <span class="nav-icon" aria-hidden="true">📚</span>
-        Knowledge base
-      </button>
-      <button type="button" class="nav-item" data-tab="embed">
-        <span class="nav-icon" aria-hidden="true">🌐</span>
-        Embed
-      </button>
-    </nav>
-    <div class="sidebar-footer">
-      <div class="user-chip">
-        <span class="user-dot" aria-hidden="true"></span>
-        <span class="user-name">{{ username }} · {{ tenant_slug }}</span>
-      </div>
-      <form method="post" action="{{ url_for('logout') }}" class="logout-form">
-        <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
-      </form>
-    </div>
-  </aside>
+  {% include "partials/console_sidebar.html" %}
 
   <main class="main">
     <header class="main-header">

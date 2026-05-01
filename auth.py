@@ -37,3 +37,22 @@ def login_required(view):
         return redirect(url_for("login_page", next=request.full_path))
 
     return wrapped
+
+
+def superuser_required(view):
+    """Require authenticated platform superuser (is_superuser on User)."""
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = getattr(g, "current_user", None)
+        if user is None:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Unauthorized"}), 401
+            return redirect(url_for("login_page", next=request.full_path))
+        if not getattr(user, "is_superuser", False):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Forbidden"}), 403
+            return redirect(url_for("dashboard"))
+        return view(*args, **kwargs)
+
+    return wrapped

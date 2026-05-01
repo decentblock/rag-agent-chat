@@ -154,6 +154,10 @@
   color: #fff;
 }
 
+a.nav-item {
+  text-decoration: none;
+}
+
 .nav-icon {
   opacity: 0.85;
 }

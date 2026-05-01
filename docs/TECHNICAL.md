@@ -84,7 +84,7 @@ On application load (`app.py`):
 2. `db.init_app(app)`, `register_principal_loader(app)`.  
 3. **`flask_cors.CORS`** registered for **`/api/embed/*`** using **`EMBED_CORS_ORIGINS`**.  
 4. `register_builtin_agents(replace=True)` registers all built-in agents.  
-5. **`init_database()`** runs: `db.create_all()`, **`_ensure_tenant_plan_columns()`** (adds **`plan_slug`**, **`usage_chat_month`**, **`usage_chat_count`** on **`tenants`** when missing on SQLite / Postgres), **`_ensure_api_keys_columns()`** (adds embed-related **`api_keys`** columns such as **`default_agent_id`**, **`agent_config_json`**, **`key_prefix`** when missing), then **`seed_if_needed(...)`** (permissions including **`embed:keys`**, default tenant, roles, bootstrap admin, default collection; **`grant_embed_keys_to_existing_editors`** backfills Editors created before that permission existed).  
+5. **`init_database()`** runs: `db.create_all()`, **`_ensure_tenant_plan_columns()`** (adds **`plan_slug`**, **`usage_chat_month`**, **`usage_chat_count`** on **`tenants`** when missing on SQLite / Postgres), **`_ensure_api_keys_columns()`** (adds embed-related **`api_keys`** columns such as **`default_agent_id`**, **`agent_config_json`**, **`key_prefix`** when missing), **`_ensure_user_is_superuser_column()`** (adds **`users.is_superuser`** when missing), then **`seed_if_needed(...)`** (permissions including **`embed:keys`**, default tenant, roles, bootstrap admin, default collection; **`grant_embed_keys_to_existing_editors`** backfills Editors created before that permission existed). **`system_settings`** rows override landing marketing values when present — see **`services/marketing_settings.py`**.  
 
 The dev server entrypoint warns if `ADMIN_BOOTSTRAP_PASSWORD == "changeme"`.
 
@@ -115,6 +115,10 @@ All keys live in **`config.py`** unless noted. Environment variables override de
 | `DEFAULT_TENANT_SLUG` | `DEFAULT_TENANT_SLUG` | `default` |
 | `REGISTRATION_ENABLED` | `REGISTRATION_ENABLED` | `true` — when enabled, **`GET`/`POST /register`** allow creating a new **`Tenant`** + first admin; disable with `false` / `0` / `no` |
 | `EMBED_CORS_ORIGINS` | `EMBED_CORS_ORIGINS` | Default **`*`**. For production embeds, set a comma-separated list of allowed **`Origin`** values (e.g. `https://www.customer.com,https://customer.com`). Applies only to **`/api/embed/*`** (methods **`POST`**, **`OPTIONS`**); headers allowed include **`Content-Type`**, **`Authorization`**, **`X-Nexura-Embed-Key`**. |
+| `BOOTSTRAP_SUPERUSER` | `BOOTSTRAP_SUPERUSER` | `false` — when **`true`**, the seeded bootstrap admin (**`ADMIN_BOOTSTRAP_*`**) gets **`users.is_superuser=True`** so they can open **`/super/settings`** |
+| `MARKETING_PRICE_*` | `MARKETING_PRICE_STARTER_DISPLAY`, `MARKETING_PRICE_GROWTH_MONTHLY`, `MARKETING_PRICE_GROWTH_ANNUAL_EQUIV` | Strings shown on the landing pricing cards (defaults in **`config.py`**) |
+| `MARKETING_GROWTH_*_BLURB` | `MARKETING_GROWTH_MONTHLY_BLURB`, `MARKETING_GROWTH_ANNUAL_BLURB` | Short subtitles under Growth tier pricing |
+| — | — | **Contact sales** / **Request proposal** on the landing page link to **`/contact-sales`** and **`/request-proposal`** (forms → **`lead_inquiries`**). There are no URL env vars for those CTAs. |
 
 Upload directory: **`uploads/`**, with per-tenant subfolders `uploads/<tenant_id>/`.
 
@@ -150,6 +154,7 @@ Per-tenant roles (`tenant_id` + `name` unique). Many-to-many with `permissions` 
 | `tenant_id`, `username` | Unique together |
 | `password_hash` | Werkzeug hash; nullable if external auth added later |
 | `email`, `is_active` | Profile / gate login |
+| `is_superuser` | When **`true`**, platform operator — may edit **`/super/settings`** (marketing overrides); unrelated to tenant RBAC roles |
 | `roles` | Many-to-many via **`user_roles`** |
 
 ### 5.5 `collections`
@@ -164,13 +169,21 @@ File metadata: `original_filename`, `storage_path`, `mime_type`, `byte_size`, `s
 
 One row per user (PK `user_id`): `agent_id`, `config_json` (JSON text), `updated_at`.
 
-### 5.8 `api_keys`
+### 5.8 `system_settings`
+
+Key/value overrides for platform-wide UI (landing marketing). **`key`** PK (strings such as **`marketing_price_starter_display`** — see **`MARKETING_SETTING_KEYS`** in **`services/marketing_settings.py`**), **`value`** text, **`updated_at`**. Empty form fields on **`POST /super/settings`** delete the row so env defaults apply again.
+
+### 5.9 `lead_inquiries`
+
+Public marketing form posts (**`kind`**: `contact_sales` or `request_proposal`): **`name`**, **`email`**, **`company`**, optional **`phone`**, **`message`**, **`created_at`**. Listed on **`/super/settings`** for superusers.
+
+### 5.10 `api_keys`
 
 Tenant-scoped **embed / integration keys**: `name`, unique **`key_prefix`** (public lookup fragment), **`key_hash`** (Werkzeug hash of full secret), optional **`allowed_collection_ids_json`** (restrict retrieval; omit or empty = all tenant collections), optional **`default_agent_id`** / **`agent_config_json`** for widget defaults, **`is_active`**.
 
 Issued secrets look like **`nxemb_<12 hex>_<48 hex>`** — shown **once** at creation. **`POST /api/embed/chat`** validates the Bearer / header token against this table (`authenticate_embed_key`).
 
-**Schema upgrades:** SQLAlchemy **`create_all()`** does not migrate every additive change automatically beyond **`_ensure_tenant_plan_columns()`** and **`_ensure_api_keys_columns()`**. For other columns, use a fresh DB for development or run explicit **`ALTER TABLE`** / migrations in production.
+**Schema upgrades:** SQLAlchemy **`create_all()`** does not migrate every additive change automatically beyond **`_ensure_tenant_plan_columns()`**, **`_ensure_api_keys_columns()`**, and **`_ensure_user_is_superuser_column()`**. New tables such as **`system_settings`** and **`lead_inquiries`** appear on **`create_all()`** for new databases; for existing deployments without a table, restart after deploy or run migrations. For other columns, use a fresh DB for development or run explicit **`ALTER TABLE`** / migrations in production.
 
 ---
 
@@ -199,6 +212,12 @@ Clears session; redirects to **`/`** (landing).
 
 - For `/api/*`, `/chat`, `/upload-document`, `/delete-document`: **401** JSON `{"error":"Unauthorized"}`.  
 - Else: redirect to `/login?next=...`.
+
+### 6.4 Platform superuser (`superuser_required`)
+
+Users with **`users.is_superuser`** may **`GET`/`POST /super/settings`** (marketing + leads), **`GET /super/guides`** (**`FEATURES_SUMMARY.md`** + **`DEPLOYMENT.md`**), and **`GET /super/technical`** (**`TECHNICAL.md`**). Non-superusers receive **403** JSON on API-style paths or a redirect to the dashboard for HTML.
+
+Grant the flag via **`BOOTSTRAP_SUPERUSER=true`** on first seed, or **`UPDATE users SET is_superuser = 1 WHERE …`** on existing databases.
 
 ---
 
@@ -541,12 +560,16 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 | Route | Method | Guard | Purpose |
 |-------|--------|-------|---------|
 | `/` | GET | — | Landing + marketplace preview |
-| `/docs` | GET | — | Documentation (Markdown-rendered) |
+| `/docs` | GET | — | **Swagger UI** (OpenAPI) — public API reference only |
+| `/api/openapi.json` | GET | — | OpenAPI 3 document for API explorer |
+| `/super/guides` | GET | `login_required`, **`superuser_required`** | **`FEATURES_SUMMARY.md`** + **`DEPLOYMENT.md`** |
+| `/super/technical` | GET | `login_required`, **`superuser_required`** | **`TECHNICAL.md`** (full operator reference) |
 | `/login` | GET | — | Login form (`next`, default tenant hint) |
 | `/login` | POST | — | Submit credentials |
 | `/register` | GET | — | Organisation signup form (**404** if **`REGISTRATION_ENABLED`** false) |
 | `/register` | POST | — | Provision tenant + first admin (**422** validation; **`abort(404)`** when disabled) |
 | `/logout` | POST | — | Clear session → `/` |
+| `/super/settings` | GET/POST | `login_required`, **`superuser_required`** | Platform marketing overrides + lead inbox |
 | `/app` | GET | `login_required` | Dashboard console (Overview, Agents, Chat, Knowledge base, **Embed**) |
 
 ---
@@ -560,7 +583,7 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 - **`static/js/app.js`** — dashboard tabs, marketplace, chat, library, **embed key CRUD + snippet UI**  
 - **`static/embed/nexura-chat.js`** — customer-site floating chat widget (fetches **`POST /api/embed/chat`**)  
 
-Templates: **`templates/base.html`**, **`landing.html`**, **`login.html`**, **`register.html`**, **`dashboard.html`** (includes **`nexura-console-bootstrap`** with **`data-app-origin`** for correct snippet URLs), **`docs.html`**.
+Templates: **`templates/base.html`**, **`landing.html`**, **`login.html`**, **`register.html`**, **`dashboard.html`** (includes **`nexura-console-bootstrap`**), **`docs.html`** (Swagger UI only), **`super_settings.html`**, **`super_guides.html`**, **`super_technical.html`**.
 
 Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), **`services/embed_key_service.py`**, **`services/agent_preferences.py`**, **`services/plan_enforcement.py`**, **`services/tenant_provisioning.py`**, **`plans_catalog.py`**.
 
@@ -596,7 +619,7 @@ Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), 
 
 ## 23. Deployment (companion guide)
 
-Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, and optional containers are maintained in **`docs/DEPLOYMENT.md`**. That file is rendered on the **`/docs`** page under **Deployment (step-by-step)**.
+Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, and optional containers are maintained in **`docs/DEPLOYMENT.md`**, rendered with **`docs/FEATURES_SUMMARY.md`** for platform superusers at **`/super/guides`**. The **HTTP API** is **Swagger UI** on public **`/docs`** (spec **`/api/openapi.json`**). This **`TECHNICAL.md`** file is served at **`/super/technical`**.
 
 ---
 

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Platform settings · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+<style>
+  .super-grid { display: grid; gap: 1.25rem; }
+  @media (min-width: 960px) {
+    .super-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  }
+  .super-panel { min-width: 0; }
+  .super-field { margin-bottom: 1.1rem; }
+  .super-field label { display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 0.35rem; }
+  .super-field input { width: 100%; }
+  .super-hint { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.45; }
+  .super-actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .super-flash { padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); margin: 0 0 1rem; font-size: 0.9rem; }
+  .super-flash.success { background: rgba(13, 148, 136, 0.2); color: #99f6e4; border: 1px solid rgba(45, 212, 191, 0.35); }
+  .leads-table-wrap { overflow-x: auto; margin-top: 0.75rem; max-height: min(70vh, 36rem); overflow-y: auto; }
+  .leads-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .leads-table th, .leads-table td { padding: 0.45rem 0.5rem; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, 0.15); vertical-align: top; }
+  .leads-table th { position: sticky; top: 0; background: rgba(15, 23, 42, 0.95); z-index: 1; }
+  .lead-msg { max-width: 14rem; white-space: pre-wrap; word-break: break-word; }
+  .kind-pill { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.85; }
+</style>
+{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+{% block body %}
+
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" hidden aria-hidden="true"></div>
+
+<div class="app-shell">
+  {% include "partials/console_sidebar.html" %}
+
+  <main class="main">
+    <header class="main-header">
+      <h2 class="main-title" id="panel-title">Platform settings</h2>
+      <p class="main-desc" id="panel-desc">Landing pricing and inbound sales forms at /contact-sales and /request-proposal.</p>
+    </header>
+
+    <section class="panel active" style="padding-top:0;">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <p class="super-flash {{ category }}" role="status">{{ message }}</p>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="super-grid">
+        <div class="super-panel">
+          <p class="muted" style="margin:0 0 1rem;font-size:0.9rem;line-height:1.55;">
+            Values below appear on the public landing (<strong>/</strong>). Clear a field and save to drop the database override and fall back to environment defaults from <code>config.py</code>.
+            <strong>Contact sales</strong> and <strong>Request proposal</strong> use on-site forms; submissions appear in the table on the right.
+            Full operator documentation (<code>docs/TECHNICAL.md</code>) is under <a href="{{ url_for('super_technical_page') }}">Technical reference</a>.
+            Product overview &amp; deployment: <a href="{{ url_for('super_guides_page') }}">Product &amp; deployment</a>.
+          </p>
+
+          <form method="post" action="{{ url_for('super_settings_page') }}">
+            <fieldset class="card card-elevated" style="padding:1.25rem;margin:0 0 1.25rem;border:none;">
+              <legend class="card-title" style="padding:0;margin:0 0 1rem;">Pricing display</legend>
+
+              <div class="super-field">
+                <label for="marketing_price_starter_display">Starter · amount (no currency symbol)</label>
+                <input class="input" id="marketing_price_starter_display" name="marketing_price_starter_display" type="text" value="{{ marketing.marketing_price_starter_display }}" autocomplete="off" />
+                <span class="super-hint">Env default: <code>{{ env_defaults.marketing_price_starter_display }}</code></span>
+              </div>
+
+              <div class="super-field">
+                <label for="marketing_price_growth_monthly">Growth · monthly amount</label>
+                <input class="input" id="marketing_price_growth_monthly" name="marketing_price_growth_monthly" type="text" value="{{ marketing.marketing_price_growth_monthly }}" autocomplete="off" />
+                <span class="super-hint">Env default: <code>{{ env_defaults.marketing_price_growth_monthly }}</code></span>
+              </div>
+
+              <div class="super-field">
+                <label for="marketing_price_growth_annual_equiv">Growth · annual plan (equivalent monthly figure)</label>
+                <input class="input" id="marketing_price_growth_annual_equiv" name="marketing_price_growth_annual_equiv" type="text" value="{{ marketing.marketing_price_growth_annual_equiv }}" autocomplete="off" />
+                <span class="super-hint">Shown when visitors toggle “Annual”. Env: <code>{{ env_defaults.marketing_price_growth_annual_equiv }}</code></span>
+              </div>
+
+              <div class="super-field">
+                <label for="marketing_growth_monthly_blurb">Growth · monthly subtitle</label>
+                <input class="input" id="marketing_growth_monthly_blurb" name="marketing_growth_monthly_blurb" type="text" value="{{ marketing.marketing_growth_monthly_blurb }}" autocomplete="off" />
+              </div>
+
+              <div class="super-field">
+                <label for="marketing_growth_annual_blurb">Growth · annual subtitle</label>
+                <input class="input" id="marketing_growth_annual_blurb" name="marketing_growth_annual_blurb" type="text" value="{{ marketing.marketing_growth_annual_blurb }}" autocomplete="off" />
+              </div>
+            </fieldset>
+
+            <div class="super-actions">
+              <button type="submit" class="btn btn-primary">Save settings</button>
+              <a class="btn btn-secondary" href="{{ url_for('index') }}" target="_blank" rel="noopener">Preview landing</a>
+            </div>
+          </form>
+        </div>
+
+        <div class="super-panel">
+          <article class="card card-elevated" style="padding:1.25rem;margin:0;">
+            <h3 class="card-title" style="margin-top:0;">Recent form submissions</h3>
+            <p class="muted card-lead" style="margin-bottom:0;">Last 100 · Contact sales &amp; Request proposal</p>
+            {% if leads %}
+            <div class="leads-table-wrap">
+              <table class="table leads-table">
+                <thead>
+                  <tr>
+                    <th>When (UTC)</th>
+                    <th>Kind</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Org</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in leads %}
+                  <tr>
+                    <td>{{ row.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td><span class="kind-pill">{{ row.kind | replace("_", " ") }}</span></td>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.email }}</td>
+                    <td>{{ row.company }}{% if row.phone %}<br /><span class="muted">{{ row.phone }}</span>{% endif %}</td>
+                    <td class="lead-msg">{{ row.message }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="muted" style="margin:1rem 0 0;">No submissions yet.</p>
+            {% endif %}
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+{% endblock %}

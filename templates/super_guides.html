@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Product & deployment · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}" />
+<style>
+  .guides-console .docs-layout-api-inner {
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+</style>
+{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+{% block body %}
+
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" hidden aria-hidden="true"></div>
+
+<div class="app-shell guides-console">
+  {% include "partials/console_sidebar.html" %}
+
+  <main class="main">
+    <header class="main-header">
+      <h2 class="main-title">Product &amp; deployment</h2>
+      <p class="main-desc">Rendered from <code>docs/FEATURES_SUMMARY.md</code> and <code>docs/DEPLOYMENT.md</code>. Public HTTP API explorer: <a href="{{ url_for('docs_page') }}" target="_blank" rel="noopener">/docs</a>.</p>
+    </header>
+
+    <section class="panel active docs-layout-api-inner" style="padding-top:0;">
+      {% if guides_error %}
+      <div class="docs-error" role="alert">{{ guides_error }}</div>
+      {% else %}
+      <p class="muted" style="margin:0 0 1rem;font-size:0.88rem;">
+        <a href="{{ url_for('super_settings_page') }}">Platform settings</a>
+        · <a href="{{ url_for('super_technical_page') }}">Technical reference</a>
+      </p>
+      <div class="docs-grid">
+        <nav class="docs-toc" aria-label="On this page">
+          <div class="docs-toc-inner">
+            <strong>On this page</strong>
+            <a href="#guides-summary">One-page summary</a>
+            <a href="#guides-deployment">Deployment</a>
+          </div>
+        </nav>
+        <div>
+          <p id="guides-summary" class="docs-section-label">One-page summary</p>
+          <article class="docs-prose">{{ summary_html | safe }}</article>
+
+          <hr class="docs-divider" />
+
+          <p id="guides-deployment" class="docs-section-label">Deployment (step-by-step)</p>
+          <article class="docs-prose docs-prose-deploy">{{ deployment_html | safe }}</article>
+        </div>
+      </div>
+      {% endif %}
+    </section>
+  </main>
+</div>
+
+{% endblock %}

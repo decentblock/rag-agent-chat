@@ -14,58 +14,7 @@
 
 <a href="#main-content" class="ld-skip-link">Skip to content</a>
 
-<header class="ld-nav">
-  <div class="ld-nav-inner ld-container">
-    <a class="ld-brand" href="{{ url_for('index') }}">
-      <span class="ld-brand-mark" aria-hidden="true">N</span>
-      <span class="ld-brand-text">Nexura</span>
-    </a>
-
-    <nav class="ld-nav-desktop" aria-label="Primary">
-      <a href="#features">Features</a>
-      <a href="#agents">Agents</a>
-      <a href="#pricing">Pricing</a>
-      <a href="{{ url_for('docs_page') }}">Documentation</a>
-    </nav>
-
-    <div class="ld-nav-actions ld-nav-actions-desktop">
-      {% if logged_in %}
-      <a class="btn btn-secondary btn-sm" href="{{ url_for('dashboard') }}">Open console</a>
-      {% else %}
-      <a class="btn btn-ghost btn-sm" href="{{ url_for('login_page') }}">Sign in</a>
-      {% if registration_enabled %}
-      <a class="btn btn-secondary btn-sm" href="{{ url_for('register_page') }}">Create organisation</a>
-      {% endif %}
-      <a class="btn btn-primary btn-sm" href="{{ url_for('login_page') }}">Open console</a>
-      {% endif %}
-    </div>
-
-    <details class="ld-nav-drawer">
-      <summary class="ld-nav-drawer-toggle" aria-label="Open menu">
-        <span class="ld-nav-drawer-icon" aria-hidden="true"></span>
-      </summary>
-      <div class="ld-nav-drawer-panel">
-        <nav class="ld-nav-drawer-links" aria-label="Mobile primary">
-          <a href="#features">Features</a>
-          <a href="#agents">Agents</a>
-          <a href="#pricing">Pricing</a>
-          <a href="{{ url_for('docs_page') }}">Documentation</a>
-        </nav>
-        <div class="ld-nav-actions ld-nav-actions-mobile">
-          {% if logged_in %}
-          <a class="btn btn-secondary btn-block" href="{{ url_for('dashboard') }}">Open console</a>
-          {% else %}
-          <a class="btn btn-primary btn-block" href="{{ url_for('login_page') }}">Open console</a>
-          {% if registration_enabled %}
-          <a class="btn btn-secondary btn-block" href="{{ url_for('register_page') }}">Create organisation</a>
-          {% endif %}
-          <a class="btn btn-ghost btn-block" href="{{ url_for('login_page') }}">Sign in</a>
-          {% endif %}
-        </div>
-      </div>
-    </details>
-  </div>
-</header>
+{% include "partials/landing_header.html" %}
 
 <main id="main-content">
 <section class="ld-hero" aria-labelledby="ld-hero-heading">
@@ -261,7 +210,7 @@
           </div>
           <div class="ld-price-amount-row">
             <span class="ld-price-currency">$</span>
-            <span class="ld-price-digits">0</span>
+            <span class="ld-price-digits">{{ pricing.starter_display }}</span>
             <div class="ld-price-suffix">
               <span class="ld-price-period">/ month</span>
               <span class="ld-price-sub muted">Forever free · fair use</span>
@@ -284,11 +233,11 @@
           </div>
           <div class="ld-price-amount-row">
             <span class="ld-price-currency">$</span>
-            <span class="ld-price-digits" data-price-monthly="499" data-price-annual="416">499</span>
+            <span class="ld-price-digits" data-price-monthly="{{ pricing.growth_monthly }}" data-price-annual="{{ pricing.growth_annual_equiv }}">{{ pricing.growth_monthly }}</span>
             <div class="ld-price-suffix">
               <span class="ld-price-period">/ month</span>
-              <span class="ld-price-sub muted" data-show="monthly">Per tenant · billed monthly</span>
-              <span class="ld-price-sub muted" data-show="annual" hidden>$4,990 / year · equivalent monthly</span>
+              <span class="ld-price-sub muted" data-show="monthly">{{ pricing.growth_monthly_blurb }}</span>
+              <span class="ld-price-sub muted" data-show="annual" hidden>{{ pricing.growth_annual_blurb }}</span>
             </div>
           </div>
           <ul class="ld-price-features">
@@ -297,7 +246,7 @@
             <li><span class="ld-check" aria-hidden="true"></span>Priority roadmap input on agents</li>
             <li><span class="ld-check" aria-hidden="true"></span>Shared Slack / email within business hours</li>
           </ul>
-          <a class="btn btn-primary btn-block ld-price-cta" href="{{ url_for('docs_page') }}">Contact sales</a>
+          <a class="btn btn-primary btn-block ld-price-cta" href="{{ pricing.url_contact_sales }}">Contact sales</a>
         </article>
 
         <article class="ld-price-card ld-price-card-stripe">
@@ -317,7 +266,7 @@
             <li><span class="ld-check" aria-hidden="true"></span>HIPAA / SOC2 pathways (paperwork)</li>
             <li><span class="ld-check" aria-hidden="true"></span>Named solutions engineer</li>
           </ul>
-          <a class="btn btn-secondary btn-block ld-price-cta" href="{{ url_for('docs_page') }}">Request proposal</a>
+          <a class="btn btn-secondary btn-block ld-price-cta" href="{{ pricing.url_request_proposal }}">Request proposal</a>
         </article>
       </div>
 

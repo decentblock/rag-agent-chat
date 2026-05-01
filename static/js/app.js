@@ -850,4 +850,18 @@
   loadCollections(false).catch((e) =>
     toast(e.message || "Library load failed", "error")
   );
+
+  const tabParam = new URLSearchParams(window.location.search).get("tab");
+  if (tabParam && panelCopy[tabParam]) {
+    const tabBtn = document.querySelector('.nav-item[data-tab="' + tabParam + '"]');
+    if (tabBtn) tabBtn.click();
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("tab");
+      const qs = u.searchParams.toString();
+      window.history.replaceState({}, "", u.pathname + (qs ? "?" + qs : "") + u.hash);
+    } catch (_) {
+      /* ignore */
+    }
+  }
 })();

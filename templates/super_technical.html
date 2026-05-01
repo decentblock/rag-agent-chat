@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Technical reference · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}" />
+<style>
+  .tech-console-prose {
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: var(--muted);
+    max-width: 52rem;
+  }
+  .tech-console-prose .docs-prose { color: var(--ink-soft); }
+</style>
+{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+{% block body %}
+
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" hidden aria-hidden="true"></div>
+
+<div class="app-shell">
+  {% include "partials/console_sidebar.html" %}
+
+  <main class="main">
+    <header class="main-header">
+      <h2 class="main-title">Technical reference</h2>
+      <p class="main-desc">Rendered from <code>docs/TECHNICAL.md</code> — architecture, data model, RBAC, APIs (detail), security.</p>
+    </header>
+
+    <section class="panel active" style="padding-top:0;">
+      <p class="muted" style="margin:0 0 1rem;font-size:0.88rem;">
+        Public <strong>/docs</strong> is the interactive <strong>API reference</strong> (Swagger UI) only.
+        This technical manual is for platform superusers.
+        <a href="{{ url_for('super_guides_page') }}">← Product &amp; deployment</a>
+        · <a href="{{ url_for('super_settings_page') }}">Platform settings</a>
+      </p>
+      <article class="tech-console-prose docs-prose">{{ technical_html | safe }}</article>
+    </section>
+  </main>
+</div>
+
+{% endblock %}

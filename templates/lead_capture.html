@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block head_extra %}
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet" />
+{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}" />
+<style>
+  .ld-lead-main { padding-bottom: 4rem; }
+  .ld-lead-form-card {
+    max-width: 28rem;
+    margin: 2rem auto 0;
+    padding: 1.5rem 1.35rem;
+    border-radius: var(--ld-radius-lg, 1rem);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(12px);
+  }
+  .ld-lead-form-card .field { margin-bottom: 1rem; }
+  .ld-lead-form-card .field-label { display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 0.35rem; }
+  .ld-lead-form-card .field-hint { font-size: 0.78rem; color: var(--ld-muted, #94a3b8); margin-top: 0.25rem; }
+  .ld-lead-form-card .field-error { font-size: 0.82rem; color: #fca5a5; margin-top: 0.35rem; }
+  .ld-lead-head { text-align: center; max-width: 36rem; margin: 0 auto; padding-top: 1.5rem; }
+  .ld-lead-head h1 { margin: 0 0 0.5rem; font-size: clamp(1.65rem, 3vw, 2rem); }
+  .ld-lead-head p { margin: 0; color: var(--ld-muted, #94a3b8); line-height: 1.55; }
+  .ld-hp { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+</style>
+{% endblock %}
+{% block body_class %}page-landing{% endblock %}
+{% block body %}
+
+{% include "partials/landing_header.html" %}
+
+<main id="main-content" class="ld-lead-main ld-container">
+  <header class="ld-lead-head">
+    <h1>{{ headline }}</h1>
+    <p>{{ intro }}</p>
+  </header>
+
+  <div class="ld-lead-form-card">
+    <form method="post" action="{{ url_for('contact_sales_page') if form_kind == 'contact_sales' else url_for('request_proposal_page') }}" novalidate>
+      <div class="ld-hp" aria-hidden="true">
+        <label for="_company_website">Company website</label>
+        <input type="text" name="_company_website" id="_company_website" tabindex="-1" autocomplete="off" />
+      </div>
+
+      <label class="field">
+        <span class="field-label">Full name</span>
+        <input class="input" type="text" name="name" required maxlength="255" autocomplete="name"
+          value="{{ form_values.get('name', '') if form_values else '' }}" />
+        {% if form_errors and form_errors.get('name') %}<p class="field-error">{{ form_errors.name }}</p>{% endif %}
+      </label>
+
+      <label class="field">
+        <span class="field-label">Work email</span>
+        <input class="input" type="email" name="email" required maxlength="255" autocomplete="email"
+          value="{{ form_values.get('email', '') if form_values else '' }}" />
+        {% if form_errors and form_errors.get('email') %}<p class="field-error">{{ form_errors.email }}</p>{% endif %}
+      </label>
+
+      <label class="field">
+        <span class="field-label">Organisation</span>
+        <input class="input" type="text" name="company" required maxlength="255" autocomplete="organization"
+          value="{{ form_values.get('company', '') if form_values else '' }}" />
+        {% if form_errors and form_errors.get('company') %}<p class="field-error">{{ form_errors.company }}</p>{% endif %}
+      </label>
+
+      <label class="field">
+        <span class="field-label">Phone <span class="field-hint" style="display:inline;font-weight:400;">(optional)</span></span>
+        <input class="input" type="tel" name="phone" maxlength="64" autocomplete="tel"
+          value="{{ form_values.get('phone', '') if form_values else '' }}" />
+        {% if form_errors and form_errors.get('phone') %}<p class="field-error">{{ form_errors.phone }}</p>{% endif %}
+      </label>
+
+      <label class="field">
+        <span class="field-label">How can we help?</span>
+        <textarea class="input textarea" name="message" rows="5" required maxlength="8000" placeholder="Team size, timeline, regions, compliance…">{{ form_values.get('message', '') if form_values else '' }}</textarea>
+        {% if form_errors and form_errors.get('message') %}<p class="field-error">{{ form_errors.message }}</p>{% endif %}
+      </label>
+
+      <div style="display:flex;gap:0.65rem;flex-wrap:wrap;margin-top:1.25rem;">
+        <button type="submit" class="btn btn-primary">Submit</button>
+        <a class="btn btn-secondary" href="{{ url_for('index') }}#pricing">Back to pricing</a>
+      </div>
+    </form>
+  </div>
+</main>
+
+<footer class="ld-footer">
+  <div class="ld-container ld-footer-grid">
+    <span><strong>Nexura</strong> — multi‑tenant RAG &amp; agents.</span>
+    <span class="muted">© 2026 · Built for operator‑grade isolation.</span>
+  </div>
+</footer>
+
+{% endblock %}

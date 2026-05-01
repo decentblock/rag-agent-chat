@@ -90,7 +90,7 @@ pip install --upgrade pip
 pip install -r requirements-dev.txt
 ```
 
-For **formatted `/docs`** in the browser, the `markdown` package is already listed in `requirements-dev.txt`.
+Public **`/docs`** serves **Swagger UI** only (OpenAPI at **`/api/openapi.json`**). **Product summary** and **this deployment guide** render in the console for platform superusers at **`/super/guides`** — install the **`markdown`** package (listed in `requirements-dev.txt`) for HTML rendering there.
 
 For **production HTTP serving**, install a WSGI server (not included by default):
 
@@ -415,4 +415,4 @@ Ensure **one writable persistence layer** per tenant data path; read-only contai
 
 ---
 
-For architecture and every HTTP endpoint, see **`docs/TECHNICAL.md`**. For a short product overview, see **`docs/FEATURES_SUMMARY.md`**.
+For architecture and every HTTP route, see **`docs/TECHNICAL.md`** (superusers: **`/super/technical`**). Product overview and this deployment guide render together at **`/super/guides`** (sources **`docs/FEATURES_SUMMARY.md`**, **`docs/DEPLOYMENT.md`**). Live API explorer: **`/docs`** (Swagger).

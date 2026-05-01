@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Thank you · Nexura{% endblock %}
+{% block head_extra %}
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet" />
+{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}" />
+<style>
+  .ld-thanks-main { padding: 4rem 1rem 5rem; text-align: center; max-width: 28rem; margin: 0 auto; }
+  .ld-thanks-main h1 { margin: 0 0 0.75rem; font-size: clamp(1.5rem, 3vw, 1.85rem); }
+  .ld-thanks-main p { margin: 0 0 1.5rem; color: var(--ld-muted, #94a3b8); line-height: 1.55; }
+</style>
+{% endblock %}
+{% block body_class %}page-landing{% endblock %}
+{% block body %}
+
+{% include "partials/landing_header.html" %}
+
+<main id="main-content" class="ld-container ld-thanks-main">
+  <h1>Thanks — we received your message</h1>
+  <p>
+    {% if kind == 'request_proposal' %}
+      Our team will review your proposal request and reply to the email you provided.
+    {% else %}
+      Our sales team will follow up shortly using the email you provided.
+    {% endif %}
+  </p>
+  <div style="display:flex;gap:0.65rem;justify-content:center;flex-wrap:wrap;">
+    <a class="btn btn-primary" href="{{ url_for('index') }}">Back to home</a>
+    <a class="btn btn-secondary" href="{{ url_for('docs_page') }}">Documentation</a>
+  </div>
+</main>
+
+<footer class="ld-footer">
+  <div class="ld-container ld-footer-grid">
+    <span><strong>Nexura</strong> — multi‑tenant RAG &amp; agents.</span>
+    <span class="muted">© 2026 · Built for operator‑grade isolation.</span>
+  </div>
+</footer>
+
+{% endblock %}

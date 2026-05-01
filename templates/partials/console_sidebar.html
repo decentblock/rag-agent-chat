@@ -1,0 +1,80 @@
+{# Expects: spa_tabs_enabled (bool), username, tenant_slug, is_superuser #}
+{# Dashboard: buttons + SPA tabs. Platform settings: plain links including ?tab= for deep links. #}
+<aside class="sidebar" aria-label="Workspace navigation">
+  <div class="sidebar-brand">
+    <span class="logo-mark" aria-hidden="true">N</span>
+    <span>Nexura</span>
+  </div>
+  <div class="console-home">
+    <a href="{{ url_for('index') }}">← Marketing site</a>
+  </div>
+  <nav class="nav">
+    {% if spa_tabs_enabled %}
+    <button type="button" class="nav-item active" data-tab="overview" aria-current="page">
+      <span class="nav-icon" aria-hidden="true">◎</span>
+      Overview
+    </button>
+    <button type="button" class="nav-item" data-tab="agents">
+      <span class="nav-icon" aria-hidden="true">◇</span>
+      Agents
+    </button>
+    <button type="button" class="nav-item" data-tab="chat">
+      <span class="nav-icon" aria-hidden="true">💬</span>
+      Chat
+    </button>
+    <button type="button" class="nav-item" data-tab="library">
+      <span class="nav-icon" aria-hidden="true">📚</span>
+      Knowledge base
+    </button>
+    <button type="button" class="nav-item" data-tab="embed">
+      <span class="nav-icon" aria-hidden="true">🌐</span>
+      Embed
+    </button>
+    {% else %}
+    <a href="{{ url_for('dashboard') }}" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">◎</span>
+      Overview
+    </a>
+    <a href="{{ url_for('dashboard') }}?tab=agents" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">◇</span>
+      Agents
+    </a>
+    <a href="{{ url_for('dashboard') }}?tab=chat" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">💬</span>
+      Chat
+    </a>
+    <a href="{{ url_for('dashboard') }}?tab=library" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">📚</span>
+      Knowledge base
+    </a>
+    <a href="{{ url_for('dashboard') }}?tab=embed" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">🌐</span>
+      Embed
+    </a>
+    {% endif %}
+    {% if is_superuser %}
+    {% set _sn = super_nav|default('') %}
+    <a href="{{ url_for('super_settings_page') }}" class="nav-item nav-item-link {% if _sn == 'settings' %}active{% endif %}" {% if _sn == 'settings' %}aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">⚙</span>
+      Platform settings
+    </a>
+    <a href="{{ url_for('super_guides_page') }}" class="nav-item nav-item-link {% if _sn == 'guides' %}active{% endif %}" {% if _sn == 'guides' %}aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">📘</span>
+      Product &amp; deployment
+    </a>
+    <a href="{{ url_for('super_technical_page') }}" class="nav-item nav-item-link {% if _sn == 'technical' %}active{% endif %}" {% if _sn == 'technical' %}aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">📄</span>
+      Technical reference
+    </a>
+    {% endif %}
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-chip">
+      <span class="user-dot" aria-hidden="true"></span>
+      <span class="user-name">{{ username }} · {{ tenant_slug }}</span>
+    </div>
+    <form method="post" action="{{ url_for('logout') }}" class="logout-form">
+      <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+    </form>
+  </div>
+</aside>

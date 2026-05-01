@@ -73,11 +73,38 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=True)
     email = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Platform operator (can edit /super/settings). Independent of tenant Admin role.
+    is_superuser = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     tenant = db.relationship("Tenant", backref=db.backref("users", lazy="dynamic"))
     roles = db.relationship("Role", secondary=user_roles, lazy="selectin")
 
     __table_args__ = (db.UniqueConstraint("tenant_id", "username", name="uq_users_tenant_username"),)
+
+
+class SystemSetting(db.Model):
+    """Global key/value overrides (e.g. landing pricing). Editable by superusers."""
+
+    __tablename__ = "system_settings"
+
+    key = db.Column(db.String(128), primary_key=True)
+    value = db.Column(db.Text, nullable=False, default="")
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class LeadInquiry(db.Model):
+    """Public marketing form submissions (contact sales / request proposal)."""
+
+    __tablename__ = "lead_inquiries"
+
+    id = db.Column(db.String(36), primary_key=True, default=_uuid)
+    kind = db.Column(db.String(32), nullable=False, index=True)  # contact_sales | request_proposal
+    name = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255), nullable=False)
+    company = db.Column(db.String(255), nullable=False)
+    phone = db.Column(db.String(64), nullable=True)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 class Collection(db.Model):

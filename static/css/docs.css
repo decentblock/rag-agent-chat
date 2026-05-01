@@ -1,4 +1,4 @@
-/* Long-form documentation (/docs) */
+/* Documentation: public /docs (Swagger UI) + console Markdown (super guides / technical) */
 
 .page-docs {
   background: var(--mist);
@@ -47,9 +47,26 @@
 }
 
 .docs-layout {
-  max-width: 920px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: 2rem 1.5rem 4rem;
+}
+
+.docs-swagger-wrap {
+  margin-top: 0.25rem;
+  min-height: 520px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: #fafafa;
+}
+
+/* Swagger UI inherits light grey page background */
+.docs-swagger-wrap .swagger-ui {
+  font-family: inherit;
+}
+
+.docs-swagger-wrap .swagger-ui .topbar {
+  display: none;
 }
 
 .docs-page-title {

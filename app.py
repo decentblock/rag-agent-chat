@@ -5,6 +5,7 @@ from pathlib import Path
 from flask import (
     Flask,
     abort,
+    flash,
     g,
     jsonify,
     redirect,
@@ -21,7 +22,7 @@ from agents import (
     register_builtin_agents,
     registry as agent_registry,
 )
-from auth import login_required, safe_next_path
+from auth import login_required, safe_next_path, superuser_required
 from auth_service import authenticate_user
 from collections_service import (
     create_collection,
@@ -41,7 +42,7 @@ from config import (
 )
 from extensions import db
 from logging_setup import logger
-from models import Document, Role, Tenant, User
+from models import Document, LeadInquiry, Role, Tenant, User
 from principal import register_principal_loader
 from rbac import permission_required, user_has_permission
 from rag_ingestion import (
@@ -95,58 +96,53 @@ from agent_catalog import list_marketplace_payload, validate_agent_choice  # noq
 _PROJECT_ROOT = Path(__file__).resolve().parent
 
 
-def _load_rendered_docs():
-    """Return (summary_html, technical_html, deployment_html, error_message).
+def _markdown_extensions() -> list[str]:
+    return [
+        "markdown.extensions.extra",
+        "markdown.extensions.nl2br",
+        "markdown.extensions.sane_lists",
+    ]
 
-    error_message is set only when required Markdown files are missing. If the ``markdown``
-    package is not installed, raw Markdown is shown escaped inside ``<pre>`` blocks.
-    """
+
+def _convert_markdown(raw: str) -> str:
+    """HTML from Markdown, or escaped fallback when ``markdown`` is not installed."""
     import html as html_module
-
-    docs_dir = _PROJECT_ROOT / "docs"
-    summary_path = docs_dir / "FEATURES_SUMMARY.md"
-    technical_path = docs_dir / "TECHNICAL.md"
-    deployment_path = docs_dir / "DEPLOYMENT.md"
-    required = (summary_path, technical_path, deployment_path)
-    if not all(p.is_file() for p in required):
-        return None, None, None, (
-            "Missing one or more of: docs/FEATURES_SUMMARY.md, docs/TECHNICAL.md, docs/DEPLOYMENT.md"
-        )
-
-    summary_raw = summary_path.read_text(encoding="utf-8")
-    technical_raw = technical_path.read_text(encoding="utf-8")
-    deployment_raw = deployment_path.read_text(encoding="utf-8")
 
     try:
         import markdown
     except ImportError:
-        note = (
+        return (
             '<p class="muted"><strong>Note:</strong> Install the <code>markdown</code> package '
             "for formatted docs (<code>pip install markdown</code>). Showing raw Markdown.</p>"
-        )
-        esc_summary = html_module.escape(summary_raw)
-        esc_technical = html_module.escape(technical_raw)
-        esc_deploy = html_module.escape(deployment_raw)
-        return (
-            note + f'<pre class="docs-fallback">{esc_summary}</pre>',
-            f'<pre class="docs-fallback">{esc_technical}</pre>',
-            f'<pre class="docs-fallback">{esc_deploy}</pre>',
-            None,
+            + f'<pre class="docs-fallback">{html_module.escape(raw)}</pre>'
         )
 
-    md = markdown.Markdown(
-        extensions=[
-            "markdown.extensions.extra",
-            "markdown.extensions.nl2br",
-            "markdown.extensions.sane_lists",
-        ]
-    )
-    summary_html = md.convert(summary_raw)
-    md.reset()
-    technical_html = md.convert(technical_raw)
-    md.reset()
-    deployment_html = md.convert(deployment_raw)
-    return summary_html, technical_html, deployment_html, None
+    md = markdown.Markdown(extensions=_markdown_extensions())
+    return md.convert(raw)
+
+
+def _load_operator_guides_docs():
+    """Return (summary_html, deployment_html, error_message) for FEATURES_SUMMARY + DEPLOYMENT.
+
+    Used on the super-admin guides page only.
+    """
+    docs_dir = _PROJECT_ROOT / "docs"
+    summary_path = docs_dir / "FEATURES_SUMMARY.md"
+    deployment_path = docs_dir / "DEPLOYMENT.md"
+    if not summary_path.is_file() or not deployment_path.is_file():
+        return None, None, "Missing docs/FEATURES_SUMMARY.md or docs/DEPLOYMENT.md"
+    summary_html = _convert_markdown(summary_path.read_text(encoding="utf-8"))
+    deployment_html = _convert_markdown(deployment_path.read_text(encoding="utf-8"))
+    return summary_html, deployment_html, None
+
+
+def _load_technical_reference_html():
+    """Return (technical_html, error_message). error_message when TECHNICAL.md is missing."""
+    docs_dir = _PROJECT_ROOT / "docs"
+    technical_path = docs_dir / "TECHNICAL.md"
+    if not technical_path.is_file():
+        return None, "Missing docs/TECHNICAL.md"
+    return _convert_markdown(technical_path.read_text(encoding="utf-8")), None
 
 
 def _ensure_tenant_plan_columns() -> None:
@@ -247,11 +243,34 @@ def _ensure_api_keys_columns() -> None:
         db.session.commit()
 
 
+def _ensure_user_is_superuser_column() -> None:
+    from sqlalchemy import inspect, text
+
+    insp = inspect(db.engine)
+    if not insp.has_table("users"):
+        return
+    existing = {c["name"] for c in insp.get_columns("users")}
+    dialect = db.engine.dialect.name
+    stmt = None
+    if "is_superuser" not in existing:
+        if dialect == "sqlite":
+            stmt = "ALTER TABLE users ADD COLUMN is_superuser BOOLEAN DEFAULT 0 NOT NULL"
+        elif dialect == "postgresql":
+            stmt = (
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superuser "
+                "BOOLEAN DEFAULT FALSE NOT NULL"
+            )
+    if stmt:
+        db.session.execute(text(stmt))
+        db.session.commit()
+
+
 def init_database() -> None:
     with app.app_context():
         db.create_all()
         _ensure_tenant_plan_columns()
         _ensure_api_keys_columns()
+        _ensure_user_is_superuser_column()
         seed_if_needed(
             default_tenant_slug=DEFAULT_TENANT_SLUG,
             default_tenant_name="Default organization",
@@ -269,24 +288,31 @@ def allowed_file(filename):
 
 @app.route("/")
 def index():
+    from services.marketing_settings import pricing_for_landing_template
+
     return render_template(
         "landing.html",
         logged_in=bool(session.get("user_id")),
         marketplace_agents=list_marketplace_payload(),
         registration_enabled=REGISTRATION_ENABLED,
+        pricing=pricing_for_landing_template(),
     )
 
 
 @app.route("/docs")
 def docs_page():
-    summary_html, technical_html, deployment_html, docs_error = _load_rendered_docs()
     return render_template(
         "docs.html",
-        summary_html=summary_html,
-        technical_html=technical_html,
-        deployment_html=deployment_html,
-        docs_error=docs_error,
+        openapi_spec_url=url_for("openapi_document"),
     )
+
+
+@app.route("/api/openapi.json")
+def openapi_document():
+    from services.openapi_spec import build_openapi_spec
+
+    root = request.url_root.rstrip("/")
+    return jsonify(build_openapi_spec(server_url=root))
 
 
 @app.route("/login", methods=["GET"])
@@ -419,6 +445,174 @@ def dashboard():
         username=g.current_user.username,
         tenant_slug=g.tenant.slug,
         app_origin=root,
+        is_superuser=bool(getattr(g.current_user, "is_superuser", False)),
+        spa_tabs_enabled=True,
+    )
+
+
+def _lead_capture_page(*, kind: str, page_title: str, headline: str, intro: str):
+    if request.method == "POST":
+        if (request.form.get("_company_website") or "").strip():
+            return redirect(url_for("lead_thanks_page", kind=kind))
+        errors: dict[str, str] = {}
+        name = (request.form.get("name") or "").strip()
+        email = (request.form.get("email") or "").strip()
+        company = (request.form.get("company") or "").strip()
+        phone_raw = (request.form.get("phone") or "").strip()
+        phone = phone_raw or None
+        message = (request.form.get("message") or "").strip()
+        if not name or len(name) > 255:
+            errors["name"] = "Please enter your name (max 255 characters)."
+        if not email or len(email) > 255 or "@" not in email:
+            errors["email"] = "Please enter a valid email."
+        if not company or len(company) > 255:
+            errors["company"] = "Please enter your organisation name."
+        if phone_raw and len(phone_raw) > 64:
+            errors["phone"] = "Phone is too long."
+        if not message or len(message) < 8:
+            errors["message"] = "Please add a short message (at least a few words)."
+        if len(message) > 8000:
+            errors["message"] = "Message is too long (max 8000 characters)."
+        if errors:
+            return (
+                render_template(
+                    "lead_capture.html",
+                    logged_in=bool(session.get("user_id")),
+                    registration_enabled=REGISTRATION_ENABLED,
+                    page_title=page_title,
+                    headline=headline,
+                    intro=intro,
+                    form_kind=kind,
+                    form_errors=errors,
+                    form_values=request.form,
+                ),
+                422,
+            )
+        db.session.add(
+            LeadInquiry(
+                kind=kind,
+                name=name,
+                email=email,
+                company=company,
+                phone=phone,
+                message=message,
+            )
+        )
+        db.session.commit()
+        logger.info("lead_inquiry submitted kind=%s email=%s", kind, email)
+        return redirect(url_for("lead_thanks_page", kind=kind))
+    return render_template(
+        "lead_capture.html",
+        logged_in=bool(session.get("user_id")),
+        registration_enabled=REGISTRATION_ENABLED,
+        page_title=page_title,
+        headline=headline,
+        intro=intro,
+        form_kind=kind,
+        form_errors=None,
+        form_values=None,
+    )
+
+
+@app.route("/contact-sales", methods=["GET", "POST"])
+def contact_sales_page():
+    return _lead_capture_page(
+        kind="contact_sales",
+        page_title="Contact sales · Nexura",
+        headline="Contact sales",
+        intro="Tell us about your team and timing. We’ll follow up by email.",
+    )
+
+
+@app.route("/request-proposal", methods=["GET", "POST"])
+def request_proposal_page():
+    return _lead_capture_page(
+        kind="request_proposal",
+        page_title="Request proposal · Nexura",
+        headline="Request a proposal",
+        intro="Share scope, regions, and compliance needs. We’ll respond with next steps.",
+    )
+
+
+@app.route("/thanks")
+def lead_thanks_page():
+    kind = (request.args.get("kind") or "").strip()
+    if kind not in ("contact_sales", "request_proposal"):
+        kind = "contact_sales"
+    return render_template(
+        "lead_thanks.html",
+        logged_in=bool(session.get("user_id")),
+        registration_enabled=REGISTRATION_ENABLED,
+        kind=kind,
+    )
+
+
+@app.route("/super/settings", methods=["GET", "POST"])
+@login_required
+@superuser_required
+def super_settings_page():
+    from services.marketing_settings import (
+        MARKETING_SETTING_KEYS,
+        get_super_admin_form_values,
+        marketing_env_defaults,
+        save_marketing_settings_from_form,
+    )
+
+    if request.method == "POST":
+        payload = {k: request.form.get(k, "") for k in MARKETING_SETTING_KEYS}
+        save_marketing_settings_from_form(payload)
+        flash("Platform settings saved. Changes apply on the public landing page.", "success")
+        return redirect(url_for("super_settings_page"))
+
+    return render_template(
+        "super_settings.html",
+        marketing=get_super_admin_form_values(),
+        env_defaults=marketing_env_defaults(),
+        username=g.current_user.username,
+        tenant_slug=g.tenant.slug,
+        is_superuser=True,
+        spa_tabs_enabled=False,
+        super_nav="settings",
+        app_origin=request.url_root.rstrip("/"),
+        leads=LeadInquiry.query.order_by(LeadInquiry.created_at.desc()).limit(100).all(),
+    )
+
+
+@app.route("/super/guides")
+@login_required
+@superuser_required
+def super_guides_page():
+    summary_html, deployment_html, guides_error = _load_operator_guides_docs()
+    return render_template(
+        "super_guides.html",
+        summary_html=summary_html,
+        deployment_html=deployment_html,
+        guides_error=guides_error,
+        username=g.current_user.username,
+        tenant_slug=g.tenant.slug,
+        is_superuser=True,
+        spa_tabs_enabled=False,
+        super_nav="guides",
+        app_origin=request.url_root.rstrip("/"),
+    )
+
+
+@app.route("/super/technical")
+@login_required
+@superuser_required
+def super_technical_page():
+    technical_html, tech_err = _load_technical_reference_html()
+    if tech_err:
+        technical_html = f'<p class="muted" role="alert">{tech_err}</p>'
+    return render_template(
+        "super_technical.html",
+        technical_html=technical_html,
+        username=g.current_user.username,
+        tenant_slug=g.tenant.slug,
+        is_superuser=True,
+        spa_tabs_enabled=False,
+        super_nav="technical",
+        app_origin=request.url_root.rstrip("/"),
     )
 
 

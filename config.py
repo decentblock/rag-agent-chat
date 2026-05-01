@@ -49,3 +49,24 @@ REGISTRATION_ENABLED = os.getenv("REGISTRATION_ENABLED", "true").lower() in (
     "true",
     "yes",
 )
+
+# Landing pricing display (env). Super admins can override via /super/settings (system_settings).
+# Contact sales / Request proposal use built-in forms at /contact-sales and /request-proposal.
+MARKETING_PRICE_STARTER_DISPLAY = os.getenv("MARKETING_PRICE_STARTER_DISPLAY", "0")
+MARKETING_PRICE_GROWTH_MONTHLY = os.getenv("MARKETING_PRICE_GROWTH_MONTHLY", "499")
+MARKETING_PRICE_GROWTH_ANNUAL_EQUIV = os.getenv("MARKETING_PRICE_GROWTH_ANNUAL_EQUIV", "416")
+MARKETING_GROWTH_MONTHLY_BLURB = os.getenv(
+    "MARKETING_GROWTH_MONTHLY_BLURB",
+    "Per tenant · billed monthly",
+)
+MARKETING_GROWTH_ANNUAL_BLURB = os.getenv(
+    "MARKETING_GROWTH_ANNUAL_BLURB",
+    "$4,990 / year · equivalent monthly",
+)
+
+# Grant seeded bootstrap admin platform superuser (edits /super/settings).
+BOOTSTRAP_SUPERUSER = os.getenv("BOOTSTRAP_SUPERUSER", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
