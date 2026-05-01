@@ -8,10 +8,10 @@
 {% block body %}
 
 <header class="ld-nav">
-  <div class="ld-nav-inner">
+  <div class="ld-nav-inner ld-container">
     <a class="ld-brand" href="{{ url_for('index') }}">
       <span class="ld-brand-mark" aria-hidden="true">N</span>
-      Nexura
+      <span class="ld-brand-text">Nexura</span>
     </a>
     <nav class="ld-nav-links" aria-label="Primary">
       <a href="{{ url_for('index') }}">Home</a>
@@ -69,7 +69,7 @@
 </main>
 
 <footer class="ld-footer">
-  <div class="ld-max ld-footer-grid">
+  <div class="ld-container ld-footer-grid">
     <a href="{{ url_for('index') }}" class="ld-brand" style="font-size:0.95rem;">← Back to home</a>
     <span class="muted"><code>docs/FEATURES_SUMMARY.md</code> · <code>docs/DEPLOYMENT.md</code> · <code>docs/TECHNICAL.md</code></span>
   </div>
