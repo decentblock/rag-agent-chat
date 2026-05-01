@@ -16,6 +16,8 @@ def authenticate_user(tenant_slug: str, username: str, password: str) -> User | 
     tenant = Tenant.query.filter_by(slug=slug).first()
     if not tenant:
         return None
+    if not getattr(tenant, "is_active", True):
+        return None
 
     user = User.query.filter_by(tenant_id=tenant.id, username=uname).first()
     if not user or not user.is_active or not user.password_hash:

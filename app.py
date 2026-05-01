@@ -44,7 +44,7 @@ from extensions import db
 from logging_setup import logger
 from models import Document, LeadInquiry, Role, Tenant, User
 from principal import register_principal_loader
-from rbac import permission_required, user_has_permission
+from rbac import permission_required, roles_include_users_manage, user_has_permission
 from rag_ingestion import (
     delete_document_for_tenant,
     ingest_document_file,
@@ -182,6 +182,49 @@ def _ensure_tenant_plan_columns() -> None:
             stmts.append(
                 "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_chat_count INTEGER DEFAULT 0 NOT NULL"
             )
+    if "is_active" not in existing:
+        if dialect == "sqlite":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL"
+            )
+        elif dialect == "postgresql":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE NOT NULL"
+            )
+    if "billing_contact_email" not in existing:
+        if dialect == "sqlite":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN billing_contact_email VARCHAR(255)"
+            )
+        elif dialect == "postgresql":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_contact_email VARCHAR(255)"
+            )
+    if "payment_provider_customer_id" not in existing:
+        if dialect == "sqlite":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN payment_provider_customer_id VARCHAR(255)"
+            )
+        elif dialect == "postgresql":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS payment_provider_customer_id VARCHAR(255)"
+            )
+    if "notes" not in existing:
+        if dialect == "sqlite":
+            stmts.append("ALTER TABLE tenants ADD COLUMN notes TEXT")
+        elif dialect == "postgresql":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS notes TEXT"
+            )
+    if "allowed_agent_ids_json" not in existing:
+        if dialect == "sqlite":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN allowed_agent_ids_json TEXT"
+            )
+        elif dialect == "postgresql":
+            stmts.append(
+                "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS allowed_agent_ids_json TEXT"
+            )
     for sql in stmts:
         db.session.execute(text(sql))
     if stmts:
@@ -317,6 +360,8 @@ def openapi_document():
 
 @app.route("/login", methods=["GET"])
 def login_page():
+    from services.email_settings import password_reset_emails_enabled
+
     if session.get("user_id"):
         return redirect(safe_next_path(request.args.get("next")))
     return render_template(
@@ -327,11 +372,14 @@ def login_page():
         admin_bootstrap_username=ADMIN_BOOTSTRAP_USERNAME,
         registration_registered=request.args.get("registered") == "1",
         registration_enabled=REGISTRATION_ENABLED,
+        forgot_password_enabled=password_reset_emails_enabled(),
     )
 
 
 @app.route("/login", methods=["POST"])
 def login_submit():
+    from services.email_settings import password_reset_emails_enabled
+
     if session.get("user_id"):
         return redirect(safe_next_path(request.form.get("next") or request.args.get("next")))
 
@@ -358,8 +406,65 @@ def login_submit():
             admin_bootstrap_username=ADMIN_BOOTSTRAP_USERNAME,
             registration_registered=False,
             registration_enabled=REGISTRATION_ENABLED,
+            forgot_password_enabled=password_reset_emails_enabled(),
         ),
         422,
+    )
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password_page():
+    from services.email_settings import password_reset_emails_enabled
+    from services.password_reset_flow import request_otp_email
+
+    enabled = password_reset_emails_enabled()
+    if request.method == "POST":
+        tenant_slug = request.form.get("tenant_slug", "").strip()
+        email = request.form.get("email", "").strip()
+        if not enabled:
+            flash("Password reset by email is not configured on this server.", "error")
+        elif tenant_slug and email:
+            ok, msg = request_otp_email(tenant_slug, email)
+            flash(msg, "success" if ok else "error")
+        else:
+            flash("Enter organisation slug and email.", "error")
+        return redirect(url_for("forgot_password_page"))
+
+    return render_template(
+        "forgot_password.html",
+        reset_enabled=enabled,
+        default_tenant_slug=DEFAULT_TENANT_SLUG,
+    )
+
+
+@app.route("/reset-password", methods=["GET", "POST"])
+def reset_password_page():
+    from services.email_settings import password_reset_emails_enabled
+    from services.password_reset_flow import complete_password_reset
+
+    enabled = password_reset_emails_enabled()
+    if request.method == "POST":
+        tenant_slug = request.form.get("tenant_slug", "").strip()
+        email = request.form.get("email", "").strip()
+        otp = request.form.get("otp", "").strip()
+        pw = request.form.get("password", "")
+        pw2 = request.form.get("password_confirm", "")
+        if not enabled:
+            flash("Password reset by email is not configured on this server.", "error")
+        elif pw != pw2:
+            flash("Passwords do not match.", "error")
+        else:
+            ok, err = complete_password_reset(tenant_slug, email, otp, pw)
+            if ok:
+                flash("Password updated. You can sign in.", "success")
+                return redirect(url_for("login_page", tenant_slug_hint=tenant_slug))
+            flash(err or "Reset failed.", "error")
+        return redirect(url_for("reset_password_page"))
+
+    return render_template(
+        "reset_password.html",
+        reset_enabled=enabled,
+        default_tenant_slug=DEFAULT_TENANT_SLUG,
     )
 
 
@@ -445,7 +550,9 @@ def dashboard():
         username=g.current_user.username,
         tenant_slug=g.tenant.slug,
         app_origin=root,
+        current_user_id=g.current_user.id,
         is_superuser=bool(getattr(g.current_user, "is_superuser", False)),
+        can_manage_users=user_has_permission(g.current_user, "users:manage"),
         spa_tabs_enabled=True,
     )
 
@@ -578,6 +685,62 @@ def super_settings_page():
     )
 
 
+@app.route("/super/email", methods=["GET", "POST"])
+@login_required
+@superuser_required
+def super_email_settings_page():
+    from services.email_settings import (
+        email_env_defaults,
+        get_super_email_form_values,
+        save_email_settings_from_form,
+    )
+
+    if request.method == "POST":
+        payload = {
+            "smtp_host": request.form.get("smtp_host", "").strip(),
+            "smtp_port": request.form.get("smtp_port", "").strip(),
+            "smtp_username": request.form.get("smtp_username", "").strip(),
+            "smtp_password": request.form.get("smtp_password", "").strip(),
+            "smtp_use_tls": "true" if request.form.get("smtp_use_tls") == "on" else "false",
+            "smtp_use_ssl": "true" if request.form.get("smtp_use_ssl") == "on" else "false",
+            "smtp_from_email": request.form.get("smtp_from_email", "").strip(),
+            "email_password_reset_enabled": (
+                "true" if request.form.get("email_password_reset_enabled") == "on" else "false"
+            ),
+        }
+        save_email_settings_from_form(payload)
+        flash("Email / SMTP settings saved.", "success")
+        return redirect(url_for("super_email_settings_page"))
+
+    return render_template(
+        "super_email.html",
+        email=get_super_email_form_values(),
+        env_defaults=email_env_defaults(),
+        username=g.current_user.username,
+        tenant_slug=g.tenant.slug,
+        is_superuser=True,
+        spa_tabs_enabled=False,
+        super_nav="email",
+        app_origin=request.url_root.rstrip("/"),
+    )
+
+
+@app.route("/super/users")
+@login_required
+@superuser_required
+def super_users_admin_page():
+    return render_template(
+        "super_users.html",
+        username=g.current_user.username,
+        tenant_slug=g.tenant.slug,
+        current_user_id=g.current_user.id,
+        is_superuser=True,
+        spa_tabs_enabled=False,
+        super_nav="users",
+        app_origin=request.url_root.rstrip("/"),
+    )
+
+
 @app.route("/super/guides")
 @login_required
 @superuser_required
@@ -616,6 +779,87 @@ def super_technical_page():
     )
 
 
+@app.route("/super/organisations")
+@login_required
+@superuser_required
+def super_organisations_page():
+    return render_template(
+        "super_orgs.html",
+        username=g.current_user.username,
+        tenant_slug=g.tenant.slug,
+        current_user_id=g.current_user.id,
+        is_superuser=True,
+        spa_tabs_enabled=False,
+        super_nav="orgs",
+        app_origin=request.url_root.rstrip("/"),
+    )
+
+
+@app.route("/api/super/tenants", methods=["GET"])
+@login_required
+@superuser_required
+def api_super_list_tenants():
+    from services import super_org_admin
+
+    return jsonify({"tenants": super_org_admin.list_tenants_payload()})
+
+
+@app.route("/api/super/tenants/<tenant_id>", methods=["GET"])
+@login_required
+@superuser_required
+def api_super_get_tenant(tenant_id: str):
+    from services import super_org_admin
+
+    detail = super_org_admin.tenant_detail_payload(str(tenant_id))
+    if not detail:
+        return jsonify({"error": "Tenant not found"}), 404
+    return jsonify(detail)
+
+
+@app.route("/api/super/tenants/<tenant_id>", methods=["PATCH"])
+@login_required
+@superuser_required
+def api_super_patch_tenant(tenant_id: str):
+    from services import super_org_admin
+
+    body = request.get_json(force=True, silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "JSON body required"}), 400
+    detail, err = super_org_admin.patch_tenant_super(str(tenant_id), body)
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify(detail)
+
+
+@app.route("/api/super/tenants/<tenant_id>/users", methods=["GET"])
+@login_required
+@superuser_required
+def api_super_list_tenant_users(tenant_id: str):
+    from services import super_org_admin
+
+    users = super_org_admin.list_users_for_tenant(str(tenant_id))
+    if users is None:
+        return jsonify({"error": "Tenant not found"}), 404
+    return jsonify({"users": users})
+
+
+@app.route("/api/super/users/<user_id>", methods=["PATCH"])
+@login_required
+@superuser_required
+def api_super_patch_user(user_id: str):
+    from services import super_org_admin
+
+    body = request.get_json(force=True, silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "JSON body required"}), 400
+    updated, err = super_org_admin.patch_user_super(
+        str(user_id), body, str(g.current_user.id)
+    )
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"user": updated})
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
@@ -631,6 +875,43 @@ def public_plans():
 @app.route("/api/marketplace/agents", methods=["GET"])
 def marketplace_agents_public():
     return jsonify({"agents": list_marketplace_payload()})
+
+
+@app.route("/api/public/forgot-password", methods=["POST"])
+def api_public_forgot_password():
+    from services.password_reset_flow import request_otp_email
+
+    body = request.get_json(force=True, silent=True) or {}
+    tenant_slug = str(body.get("tenant_slug") or "").strip()
+    email = str(body.get("email") or "").strip()
+    if not tenant_slug or not email:
+        return jsonify({"error": "tenant_slug and email are required"}), 400
+    ok, msg = request_otp_email(tenant_slug, email)
+    if not ok:
+        return jsonify({"error": msg}), 503
+    return jsonify({"ok": True, "message": msg}), 200
+
+
+@app.route("/api/public/reset-password", methods=["POST"])
+def api_public_reset_password():
+    from services.password_reset_flow import complete_password_reset
+
+    body = request.get_json(force=True, silent=True) or {}
+    tenant_slug = str(body.get("tenant_slug") or "").strip()
+    email = str(body.get("email") or "").strip()
+    otp = str(body.get("otp") or "").strip()
+    password = str(body.get("password") or "")
+    if not tenant_slug or not email or not otp or not password:
+        return (
+            jsonify(
+                {"error": "tenant_slug, email, otp, and password are required"},
+            ),
+            400,
+        )
+    ok, err = complete_password_reset(tenant_slug, email, otp, password)
+    if ok:
+        return jsonify({"ok": True}), 200
+    return jsonify({"error": err}), 400
 
 
 @app.route("/api/v1/tenant/subscription", methods=["GET"])
@@ -772,6 +1053,8 @@ def embed_chat():
     tenant_row = Tenant.query.filter_by(id=str(row.tenant_id)).first()
     if not tenant_row:
         return jsonify({"error": "Tenant not found"}), 500
+    if not getattr(tenant_row, "is_active", True):
+        return jsonify({"error": "Organisation suspended"}), 403
 
     payload = request.get_json(force=True, silent=True) or {}
     chat_message = str(payload.get("chat_message", "")).strip()
@@ -1084,6 +1367,18 @@ def list_agents():
     return jsonify({"agents": agent_registry.list_agents()}), 200
 
 
+@app.route("/api/v1/roles", methods=["GET"])
+@login_required
+@permission_required("users:manage")
+def list_tenant_roles():
+    roles = (
+        Role.query.filter_by(tenant_id=g.tenant.id)
+        .order_by(Role.name.asc())
+        .all()
+    )
+    return jsonify({"roles": [r.name for r in roles]})
+
+
 @app.route("/api/v1/users", methods=["GET"])
 @login_required
 @permission_required("users:manage")
@@ -1112,6 +1407,7 @@ def create_tenant_user():
     body = request.get_json(force=True, silent=True) or {}
     username = str(body.get("username", "")).strip()
     password = str(body.get("password", ""))
+    email_raw = str(body.get("email") or "").strip()
     role_names = body.get("roles") or ["Viewer"]
     if not isinstance(role_names, list):
         role_names = ["Viewer"]
@@ -1137,6 +1433,7 @@ def create_tenant_user():
         tenant_id=g.tenant.id,
         username=username,
         password_hash=generate_password_hash(password),
+        email=(email_raw[:255] if email_raw else None),
         is_active=True,
     )
     user.roles = roles
@@ -1184,6 +1481,11 @@ def put_tenant_user_roles(user_id: str):
     ).all()
     if len(roles) != len(uniq):
         return jsonify({"error": "One or more unknown roles"}), 400
+
+    if user.id == g.current_user.id and not roles_include_users_manage(roles):
+        return jsonify(
+            {"error": "You cannot remove your own access to manage users"}
+        ), 400
 
     user.roles = roles
     db.session.commit()

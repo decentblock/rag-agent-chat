@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Email &amp; SMTP · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+<style>
+  .super-grid { display: grid; gap: 1.25rem; }
+  @media (min-width: 960px) {
+    .super-grid { grid-template-columns: minmax(0, 1fr); align-items: start; max-width: 40rem; }
+  }
+  .super-field { margin-bottom: 1.1rem; }
+  .super-field label { display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 0.35rem; }
+  .super-field input { width: 100%; }
+  .super-hint { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.45; }
+  .super-flash { padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); margin: 0 0 1rem; font-size: 0.9rem; }
+  .super-flash.success { background: rgba(13, 148, 136, 0.2); color: #99f6e4; border: 1px solid rgba(45, 212, 191, 0.35); }
+  .super-check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 0.9rem; }
+</style>
+{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+{% block body %}
+
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" hidden aria-hidden="true"></div>
+
+<div class="app-shell">
+  {% include "partials/console_sidebar.html" %}
+
+  <main class="main">
+    <header class="main-header">
+      <h2 class="main-title">Email &amp; SMTP</h2>
+      <p class="main-desc">Outbound mail for user password-reset OTPs. Values override environment defaults from <code>config.py</code>.</p>
+    </header>
+
+    <section class="panel active" style="padding-top:0;">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <p class="super-flash {{ category }}" role="status">{{ message }}</p>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="super-grid">
+        <form method="post" action="{{ url_for('super_email_settings_page') }}">
+          <fieldset class="card card-elevated" style="padding:1.25rem;margin:0;border:none;">
+            <legend class="card-title" style="padding:0;margin:0 0 1rem;">SMTP server</legend>
+
+            <div class="super-field">
+              <label for="smtp_host">SMTP host</label>
+              <input class="input" id="smtp_host" name="smtp_host" type="text" value="{{ email.smtp_host }}" autocomplete="off" />
+              <span class="super-hint">Env default: <code>{{ env_defaults.smtp_host or "—" }}</code></span>
+            </div>
+
+            <div class="super-field">
+              <label for="smtp_port">SMTP port</label>
+              <input class="input" id="smtp_port" name="smtp_port" type="text" value="{{ email.smtp_port }}" autocomplete="off" />
+              <span class="super-hint">Common: <code>587</code> (STARTTLS) or <code>465</code> (SSL). Env: <code>{{ env_defaults.smtp_port }}</code></span>
+            </div>
+
+            <div class="super-field">
+              <label for="smtp_username">SMTP username</label>
+              <input class="input" id="smtp_username" name="smtp_username" type="text" value="{{ email.smtp_username }}" autocomplete="off" />
+            </div>
+
+            <div class="super-field">
+              <label for="smtp_password">SMTP password</label>
+              <input class="input" id="smtp_password" name="smtp_password" type="password" value="" autocomplete="new-password" placeholder="Leave blank to keep current" />
+              <span class="super-hint">Leave blank to keep the current password (database override or <code>SMTP_PASSWORD</code> env).</span>
+            </div>
+
+            <div class="super-field">
+              <label for="smtp_from_email">From address</label>
+              <input class="input" id="smtp_from_email" name="smtp_from_email" type="email" value="{{ email.smtp_from_email }}" autocomplete="off" />
+              <span class="super-hint">Must be allowed by your provider. Env: <code>{{ env_defaults.smtp_from_email or "—" }}</code></span>
+            </div>
+
+            <label class="super-check">
+              <input type="checkbox" name="smtp_use_tls" {% if email.smtp_use_tls == 'true' %}checked{% endif %} />
+              Use STARTTLS (typical for port 587)
+            </label>
+
+            <label class="super-check">
+              <input type="checkbox" name="smtp_use_ssl" {% if email.smtp_use_ssl == 'true' %}checked{% endif %} />
+              Use implicit SSL (typical for port 465)
+            </label>
+
+            <label class="super-check">
+              <input type="checkbox" name="email_password_reset_enabled" {% if email.email_password_reset_enabled == 'true' %}checked{% endif %} />
+              Allow self-service password reset (requires valid SMTP above)
+            </label>
+
+            <div style="margin-top:1.25rem;">
+              <button type="submit" class="btn btn-primary">Save email settings</button>
+            </div>
+          </fieldset>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+{% endblock %}

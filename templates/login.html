@@ -53,6 +53,12 @@
       <button type="submit" class="btn btn-primary btn-block">Sign in</button>
     </form>
 
+    {% if forgot_password_enabled %}
+    <p style="margin-top:0.85rem;text-align:center;font-size:0.88rem;">
+      <a href="{{ url_for('forgot_password_page') }}">Forgot password?</a>
+    </p>
+    {% endif %}
+
     {% if registration_enabled %}
     <p style="margin-top:1rem;text-align:center;font-size:0.9rem;">
       <a href="{{ url_for('register_page') }}">Create a new organisation</a>

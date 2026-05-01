@@ -26,6 +26,16 @@ def user_has_permission(user: User | None, code: str) -> bool:
     return False
 
 
+def roles_include_users_manage(roles) -> bool:
+    """True if any assigned role grants wildcard or ``users:manage``."""
+    for role in roles:
+        for perm in getattr(role, "permissions", []) or []:
+            code = getattr(perm, "code", "") or ""
+            if code == "*" or code == "users:manage":
+                return True
+    return False
+
+
 def permission_required(code: str):
     """Require authenticated principal with permission (use after login_required)."""
 

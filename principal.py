@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Flask, g, session
 
-from models import User
+from models import Tenant, User
 
 
 def register_principal_loader(app: Flask) -> None:
@@ -16,6 +16,12 @@ def register_principal_loader(app: Flask) -> None:
         if not uid:
             return
         user = User.query.filter_by(id=uid).first()
-        if user and user.is_active:
-            g.current_user = user
-            g.tenant = user.tenant
+        if not user or not user.is_active:
+            session.pop("user_id", None)
+            return
+        tenant = Tenant.query.filter_by(id=user.tenant_id).first()
+        if not tenant or not getattr(tenant, "is_active", True):
+            session.pop("user_id", None)
+            return
+        g.current_user = user
+        g.tenant = tenant

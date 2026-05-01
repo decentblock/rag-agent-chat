@@ -64,6 +64,15 @@ MARKETING_GROWTH_ANNUAL_BLURB = os.getenv(
     "$4,990 / year · equivalent monthly",
 )
 
+# Optional SMTP (super admin can override via /super/email; env used as defaults / CI).
+SMTP_HOST = (os.getenv("SMTP_HOST") or "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = (os.getenv("SMTP_USERNAME") or "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD") or ""
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("1", "true", "yes")
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() in ("1", "true", "yes")
+SMTP_FROM_EMAIL = (os.getenv("SMTP_FROM_EMAIL") or "").strip()
+
 # Grant seeded bootstrap admin platform superuser (edits /super/settings).
 BOOTSTRAP_SUPERUSER = os.getenv("BOOTSTRAP_SUPERUSER", "false").lower() in (
     "1",

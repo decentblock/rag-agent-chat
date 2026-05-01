@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Organisations · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+<style>
+  .orgs-flash { padding: 0.55rem 0.75rem; border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 0.86rem; display: none; }
+  .orgs-flash.visible { display: block; }
+  .orgs-flash.err { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(248, 113, 113, 0.35); color: #fecaca; }
+  .orgs-flash.ok { background: rgba(13, 148, 136, 0.18); border: 1px solid rgba(45, 212, 191, 0.35); color: #99f6e4; }
+  .orgs-layout { display: grid; gap: 1.25rem; align-items: start; }
+  @media (min-width: 1040px) {
+    .orgs-layout { grid-template-columns: minmax(15rem, 24%) 1fr; }
+  }
+  .orgs-list-card .orgs-table-wrap { border-radius: var(--radius-md); border: 1px solid rgba(148, 163, 184, 0.2); overflow-x: auto; max-height: min(70vh, 28rem); overflow-y: auto; }
+  .orgs-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .orgs-table th, .orgs-table td { padding: 0.45rem 0.55rem; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
+  .orgs-table th { position: sticky; top: 0; background: rgba(15, 23, 42, 0.95); z-index: 1; font-weight: 600; }
+  .orgs-table tbody tr { cursor: pointer; }
+  .orgs-table tbody tr:hover { background: rgba(148, 163, 184, 0.06); }
+  .orgs-table tbody tr.orgs-row-selected { background: rgba(45, 212, 191, 0.08); outline: 1px solid rgba(45, 212, 191, 0.25); }
+  .pill-inactive { font-size: 0.7rem; padding: 0.12rem 0.4rem; border-radius: 999px; background: rgba(239, 68, 68, 0.2); color: #fecaca; }
+  .orgs-detail-placeholder { padding: 2rem 1rem; text-align: center; color: var(--muted); font-size: 0.9rem; border: 1px dashed rgba(148, 163, 184, 0.25); border-radius: var(--radius-md); }
+  .orgs-mini { margin-bottom: 1rem; }
+  .orgs-mini .card-title { font-size: 0.95rem; margin: 0 0 0.35rem; }
+  .orgs-mini .card-lead { font-size: 0.8rem; margin: 0 0 0.85rem; line-height: 1.45; }
+  .orgs-field { margin-bottom: 0.75rem; }
+  .orgs-field label { display: block; font-weight: 600; font-size: 0.8rem; margin-bottom: 0.3rem; }
+  .orgs-field input[type="text"], .orgs-field input[type="email"], .orgs-field select, .orgs-field textarea { width: 100%; max-width: 28rem; }
+  .orgs-field textarea { min-height: 3.5rem; resize: vertical; }
+  .orgs-hint { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.4; display: block; }
+  .orgs-agents-grid { display: flex; flex-direction: column; gap: 0.35rem; max-height: 14rem; overflow-y: auto; margin-top: 0.35rem; }
+  .orgs-agent-row.orgs-agent-locked { opacity: 0.68; }
+  .orgs-agent-note { font-size: 0.7rem; color: var(--muted); margin-left: 0.25rem; }
+  .orgs-users-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.35rem; }
+  .orgs-users-table th, .orgs-users-table td { padding: 0.35rem 0.45rem; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, 0.1); vertical-align: middle; }
+  .orgs-users-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+  .orgs-mini-actions { margin-top: 0.85rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+</style>
+{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+{% block body %}
+
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" hidden aria-hidden="true"></div>
+
+<div class="app-shell">
+  {% include "partials/console_sidebar.html" %}
+
+  <main class="main">
+    <header class="main-header">
+      <h2 class="main-title">Organisations</h2>
+      <p class="main-desc">Pick an organisation on the left. Each card saves only its section. User <strong>Active</strong> toggles apply immediately.</p>
+    </header>
+
+    <section class="panel active" style="padding-top:0;">
+      <p class="muted" style="margin:0 0 1rem;font-size:0.86rem;">
+        Suspending an organisation signs everyone out and blocks embed chat.
+        <a href="{{ url_for('super_users_admin_page') }}">Users</a> for passwords ·
+        <a href="{{ url_for('super_settings_page') }}">Platform settings</a>
+      </p>
+
+      <div id="orgs-flash" class="orgs-flash" role="status"></div>
+
+      <div class="orgs-layout">
+        <div class="orgs-list-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.5rem;">
+            <strong style="font-size:0.88rem;">All organisations</strong>
+            <button type="button" class="btn btn-secondary btn-sm" id="orgs-refresh">Refresh</button>
+          </div>
+          <div class="orgs-table-wrap">
+            <table class="orgs-table" aria-label="Tenants">
+              <thead>
+                <tr>
+                  <th>Slug</th>
+                  <th>Plan</th>
+                  <th>✓</th>
+                </tr>
+              </thead>
+              <tbody id="orgs-tbody">
+                <tr><td colspan="3" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="orgs-detail-wrap">
+          <div id="orgs-detail-empty" class="orgs-detail-placeholder">
+            Select an organisation from the list.
+          </div>
+
+          <div id="orgs-detail-panel" hidden>
+            <input type="hidden" id="orgs-edit-id" />
+
+            <article class="card card-elevated orgs-mini">
+              <h3 class="card-title">Profile</h3>
+              <p class="muted card-lead">Display name shown in the console.</p>
+              <form id="orgs-form-profile">
+                <div class="orgs-field">
+                  <label for="orgs-slug">Slug</label>
+                  <input class="input" id="orgs-slug" type="text" readonly />
+                </div>
+                <div class="orgs-field">
+                  <label for="orgs-name">Display name</label>
+                  <input class="input" id="orgs-name" type="text" maxlength="255" required autocomplete="organization" />
+                </div>
+                <div class="orgs-mini-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Save profile</button>
+                </div>
+              </form>
+            </article>
+
+            <article class="card card-elevated orgs-mini">
+              <h3 class="card-title">Plan &amp; access</h3>
+              <p class="muted card-lead">Subscription tier and whether the organisation may sign in.</p>
+              <form id="orgs-form-plan">
+                <div class="orgs-field">
+                  <label for="orgs-plan">Plan</label>
+                  <select class="input" id="orgs-plan"></select>
+                </div>
+                <label class="orgs-field" style="display:flex;align-items:center;gap:0.5rem;font-weight:600;">
+                  <input type="checkbox" id="orgs-active" />
+                  Organisation active
+                </label>
+                <span class="orgs-hint">When off, the organisation is suspended.</span>
+                <div class="orgs-mini-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Save plan &amp; access</button>
+                </div>
+              </form>
+            </article>
+
+            <article class="card card-elevated orgs-mini">
+              <h3 class="card-title">Billing (stubs)</h3>
+              <p class="muted card-lead">Optional references until a payment integration is connected.</p>
+              <form id="orgs-form-billing">
+                <div class="orgs-field">
+                  <label for="orgs-billing-email">Billing contact email</label>
+                  <input class="input" id="orgs-billing-email" type="email" autocomplete="off" />
+                </div>
+                <div class="orgs-field">
+                  <label for="orgs-payment-id">Payment provider customer id</label>
+                  <input class="input" id="orgs-payment-id" type="text" autocomplete="off" />
+                </div>
+                <div class="orgs-field">
+                  <label for="orgs-notes">Internal notes</label>
+                  <textarea class="input" id="orgs-notes"></textarea>
+                </div>
+                <div class="orgs-mini-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Save billing fields</button>
+                </div>
+              </form>
+            </article>
+
+            <article class="card card-elevated orgs-mini">
+              <h3 class="card-title">Agents</h3>
+              <p class="muted card-lead">Optionally narrow which agents this org may use (within the plan). Save plan changes first after switching tier.</p>
+              <form id="orgs-form-agents">
+                <label style="display:flex;align-items:center;gap:0.5rem;font-weight:600;font-size:0.85rem;">
+                  <input type="checkbox" id="orgs-custom-agents" />
+                  Custom allowlist
+                </label>
+                <span class="orgs-hint">Off = follow plan defaults only.</span>
+                <div id="orgs-agents-box" class="orgs-agents-grid" hidden></div>
+                <div class="orgs-mini-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Save agents</button>
+                </div>
+              </form>
+            </article>
+
+            <article class="card card-elevated orgs-mini">
+              <h3 class="card-title">Users</h3>
+              <p class="muted card-lead"><strong>Active</strong> controls sign-in. Changes apply immediately. You cannot disable your own platform account here.</p>
+              <div class="table-wrap">
+                <table class="orgs-users-table">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>Roles</th>
+                      <th>Active</th>
+                    </tr>
+                  </thead>
+                  <tbody id="orgs-users-tbody"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/super_orgs.js') }}"></script>
+{% endblock %}

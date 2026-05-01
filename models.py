@@ -41,6 +41,15 @@ class Tenant(db.Model):
     plan_slug = db.Column(db.String(32), nullable=False, default="growth")
     usage_chat_month = db.Column(db.String(7), nullable=True)  # UTC "YYYY-MM"
     usage_chat_count = db.Column(db.Integer, nullable=False, default=0)
+    # Platform operator (super admin): suspend org — blocks login and APIs for tenant users.
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Billing stubs until Stripe (or similar) integration — editable by superusers only.
+    billing_contact_email = db.Column(db.String(255), nullable=True)
+    payment_provider_customer_id = db.Column(db.String(255), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    # JSON array of agent_id strings; when null/empty string, plan_catalog allowlist applies as-is.
+    # Non-empty JSON overrides allowed agents for this tenant (whitelist).
+    allowed_agent_ids_json = db.Column(db.Text, nullable=True)
 
 
 class Permission(db.Model):
@@ -80,6 +89,20 @@ class User(db.Model):
     roles = db.relationship("Role", secondary=user_roles, lazy="selectin")
 
     __table_args__ = (db.UniqueConstraint("tenant_id", "username", name="uq_users_tenant_username"),)
+
+
+class PasswordResetOtp(db.Model):
+    """Email OTP for self-service password reset (tenant-scoped user lookup)."""
+
+    __tablename__ = "password_reset_otps"
+
+    id = db.Column(db.String(36), primary_key=True, default=_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False, index=True)
+    code_hash = db.Column(db.String(255), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = db.relationship("User", backref=db.backref("password_reset_otps", lazy="dynamic"))
 
 
 class SystemSetting(db.Model):

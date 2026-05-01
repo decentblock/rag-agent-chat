@@ -206,7 +206,7 @@ SQLite is acceptable for single-node demos; use Postgres when you need concurren
 
 ## Step 7 — First start (database bootstrap)
 
-Tables are created and the seed routine runs when **`app.py`** is loaded (`init_database()` at module level). On startup the app also runs **best-effort `ALTER TABLE`** helpers for existing SQLite/Postgres databases (for example **`tenants.plan_slug`**, **`usage_*`**, **`api_keys.default_agent_id`**) so minor schema additions do not always require manual SQL—see **`app.py`** (`_ensure_tenant_plan_columns`, `_ensure_api_keys_columns`).
+Tables are created and the seed routine runs when **`app.py`** is loaded (`init_database()` at module level). On startup the app also runs **best-effort `ALTER TABLE`** helpers for existing SQLite/Postgres databases (for example **`tenants.plan_slug`**, **`usage_*`**, **`tenants.is_active`**, **`billing_contact_email`**, **`allowed_agent_ids_json`**, **`api_keys.default_agent_id`**) so minor schema additions do not always require manual SQL—see **`app.py`** (`_ensure_tenant_plan_columns`, `_ensure_api_keys_columns`).
 
 **Development:**
 
@@ -233,14 +233,14 @@ Expect JSON `{"status":"ok"}`.
 2. **Organisation (tenant slug):** **`default`** (unless you changed **`DEFAULT_TENANT_SLUG`**)
 3. **Username / password:** **`ADMIN_BOOTSTRAP_USERNAME`** / **`ADMIN_BOOTSTRAP_PASSWORD`**
 
-Then open **`/app`** for the console.
+Then open **`/app`** for the console. To grant **platform superuser** access to that bootstrap user on first seed only, set **`BOOTSTRAP_SUPERUSER=true`** in the environment before the first run (see **`docs/TECHNICAL.md`** §4). Superusers can open **`/super/settings`**, **`/super/organisations`** (all tenants), **`/super/guides`**, and **`/super/technical`**.
 
 ### Path B — Self-service organisation (`REGISTRATION_ENABLED=true`, default)
 
 1. Open **`http://<host>:<port>/register`**
 2. Complete organisation name, URL slug, plan (**Starter** / **Growth** / **Enterprise** — limits in **`plans_catalog.py`**), and first admin credentials.
 3. You are redirected to **`/login`** with the new slug prefilled; sign in as that admin.
-4. In the console, **Admin** users can invite others (**`/api/v1/users`**) and assign **Admin / Editor / Viewer** per organisation.
+4. In the console, **Team** (admins / anyone with **`users:manage`**) can add users and assign **Admin / Editor / Viewer**; same capability via **`/api/v1/users`** and **`/api/v1/roles`**.
 
 Use **`REGISTRATION_ENABLED=false`** if you do not want public signup (single-tenant or invite-only operations).
 
@@ -415,4 +415,4 @@ Ensure **one writable persistence layer** per tenant data path; read-only contai
 
 ---
 
-For architecture and every HTTP route, see **`docs/TECHNICAL.md`** (superusers: **`/super/technical`**). Product overview and this deployment guide render together at **`/super/guides`** (sources **`docs/FEATURES_SUMMARY.md`**, **`docs/DEPLOYMENT.md`**). Live API explorer: **`/docs`** (Swagger).
+For architecture and every HTTP route, see **`docs/TECHNICAL.md`** (superusers: **`/super/technical`**). Cross-tenant administration is **`/super/organisations`**. Product overview and this deployment guide render together at **`/super/guides`** (sources **`docs/FEATURES_SUMMARY.md`**, **`docs/DEPLOYMENT.md`**). Live API explorer: **`/docs`** (Swagger).

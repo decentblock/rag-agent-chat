@@ -22,6 +22,10 @@
       title: "Embed",
       desc: "Mint API keys and paste the widget snippet on customer websites.",
     },
+    team: {
+      title: "Team",
+      desc: "Invite users to your organisation and assign Admin, Editor, or Viewer roles.",
+    },
   };
 
   function toast(message, variant) {
@@ -336,6 +340,11 @@
           toast(err.message || "Embed panel failed", "error")
         );
       }
+      if (tab === "team") {
+        refreshTeamPanel().catch((err) =>
+          toast(err.message || "Team panel failed", "error")
+        );
+      }
     });
   });
 
@@ -455,6 +464,268 @@
     const el = document.getElementById("nexura-console-bootstrap");
     return (el && el.dataset.appOrigin) || window.location.origin;
   }
+
+  function getCurrentUserId() {
+    const el = document.getElementById("nexura-console-bootstrap");
+    return (el && el.dataset.currentUserId) || "";
+  }
+
+  let tenantRoleNames = [];
+  let teamUsersCache = [];
+
+  function renderTeamAddRoleBoxes(names) {
+    const wrap = document.getElementById("team-add-role-checkboxes");
+    if (!wrap) return;
+    if (!names.length) {
+      wrap.innerHTML = '<p class="muted">No roles — contact support.</p>';
+      return;
+    }
+    wrap.innerHTML = names
+      .map((n) => {
+        const checked = n === "Viewer" ? " checked" : "";
+        return (
+          '<label class="team-role-label"><input type="checkbox" class="team-role-add-cb" value="' +
+          escapeAttr(n) +
+          '"' +
+          checked +
+          ' /><span>' +
+          escapeHtml(n) +
+          "</span></label>"
+        );
+      })
+      .join("");
+  }
+
+  function renderTeamDialogRoleBoxes(names, selected) {
+    const wrap = document.getElementById("team-roles-dialog-fields");
+    const sel = new Set(selected || []);
+    if (!wrap) return;
+    wrap.innerHTML = names
+      .map((n) => {
+        const checked = sel.has(n) ? " checked" : "";
+        return (
+          '<label class="team-role-label"><input type="checkbox" class="team-role-edit-cb" value="' +
+          escapeAttr(n) +
+          '"' +
+          checked +
+          ' /><span>' +
+          escapeHtml(n) +
+          "</span></label>"
+        );
+      })
+      .join("");
+  }
+
+  async function loadTenantRolesForTeam() {
+    const wrap = document.getElementById("team-add-role-checkboxes");
+    if (!wrap) return;
+    try {
+      const data = await apiFetch("/api/v1/roles");
+      tenantRoleNames = Array.isArray(data.roles) ? data.roles : [];
+      renderTeamAddRoleBoxes(tenantRoleNames);
+    } catch (e) {
+      tenantRoleNames = [];
+      wrap.innerHTML =
+        '<p class="muted">' + escapeHtml(e.message || "Cannot load roles") + "</p>";
+      throw e;
+    }
+  }
+
+  async function refreshTeamUsersTable() {
+    const tbody = document.getElementById("team-users-body");
+    if (!tbody) return;
+    tbody.innerHTML =
+      '<tr><td colspan="5" class="muted center">Loading…</td></tr>';
+    try {
+      const users = await apiFetch("/api/v1/users");
+      teamUsersCache = Array.isArray(users) ? users : [];
+      const selfId = getCurrentUserId();
+      if (!teamUsersCache.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="5" class="muted center">No users yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = teamUsersCache
+        .map((u) => {
+          const active = u.is_active !== false;
+          const roles = (u.roles || []).join(", ") || "—";
+          const email = u.email ? escapeHtml(u.email) : "—";
+          let toggle =
+            '<input type="checkbox" class="team-active-cb" data-user-id="' +
+            escapeAttr(u.id) +
+            '"' +
+            (active ? " checked" : "") +
+            (u.id === selfId ? " disabled title=\"You cannot disable your own account\"" : "") +
+            ' aria-label="Active for ' +
+            escapeAttr(u.username || "") +
+            '" />';
+          let actions =
+            '<button type="button" class="btn btn-secondary btn-sm btn-team-roles" data-user-id="' +
+            escapeAttr(u.id) +
+            '">Roles</button>';
+          return (
+            "<tr><td>" +
+            escapeHtml(u.username || "") +
+            "</td><td>" +
+            email +
+            '</td><td style="max-width:14rem;word-break:break-word">' +
+            escapeHtml(roles) +
+            '</td><td class="center">' +
+            toggle +
+            '</td><td class="col-actions"><div class="row-actions">' +
+            actions +
+            "</div></td></tr>"
+          );
+        })
+        .join("");
+    } catch (e) {
+      tbody.innerHTML =
+        '<tr><td colspan="5" class="muted center">' +
+        escapeHtml(e.message || "Failed to load users") +
+        "</td></tr>";
+    }
+  }
+
+  async function refreshTeamPanel() {
+    if (!document.getElementById("panel-team")) return;
+    await loadTenantRolesForTeam();
+    await refreshTeamUsersTable();
+  }
+
+  function openTeamRolesDialog(userId) {
+    const dlg = document.getElementById("team-roles-dialog");
+    const title = document.getElementById("team-roles-dialog-title");
+    const sub = document.getElementById("team-roles-dialog-sub");
+    const hid = document.getElementById("team-roles-target-user-id");
+    const u = teamUsersCache.find((x) => x.id === userId);
+    if (!dlg || !hid || !u) return;
+    hid.value = userId;
+    if (title) title.textContent = "Roles · " + (u.username || "");
+    if (sub)
+      sub.textContent =
+        u.id === getCurrentUserId()
+          ? "You must keep a role that can manage users."
+          : "Choose one or more roles.";
+    renderTeamDialogRoleBoxes(tenantRoleNames, u.roles || []);
+    dlg.showModal();
+    document.getElementById("team-roles-dialog-close")?.focus();
+  }
+
+  function closeTeamRolesDialog() {
+    document.getElementById("team-roles-dialog")?.close();
+  }
+
+  document.getElementById("team-add-form")?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const uEl = document.getElementById("team-add-username");
+    const pEl = document.getElementById("team-add-password");
+    const eEl = document.getElementById("team-add-email");
+    const username = (uEl && uEl.value.trim()) || "";
+    const password = (pEl && pEl.value) || "";
+    const email = (eEl && eEl.value.trim()) || "";
+    const roles = Array.from(document.querySelectorAll(".team-role-add-cb:checked")).map(
+      (cb) => cb.value
+    );
+    if (!username || !password) return;
+    if (!roles.length) {
+      toast("Select at least one role", "error");
+      return;
+    }
+    try {
+      await apiFetch("/api/v1/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          password,
+          roles,
+          ...(email ? { email } : {}),
+        }),
+      });
+      toast("User created", "success");
+      if (uEl) uEl.value = "";
+      if (pEl) pEl.value = "";
+      if (eEl) eEl.value = "";
+      renderTeamAddRoleBoxes(tenantRoleNames);
+      await refreshTeamUsersTable();
+      loadTenantSubscription().catch(() => {});
+    } catch (e) {
+      toast(e.message || "Create failed", "error");
+    }
+  });
+
+  document.getElementById("btn-refresh-team")?.addEventListener("click", () => {
+    refreshTeamUsersTable().catch((e) =>
+      toast(e.message || "Refresh failed", "error")
+    );
+  });
+
+  document.getElementById("team-users-body")?.addEventListener("change", async (ev) => {
+    const t = ev.target;
+    if (!t.classList || !t.classList.contains("team-active-cb")) return;
+    const uid = t.getAttribute("data-user-id");
+    const want = t.checked;
+    if (!uid) return;
+    if (!want && uid === getCurrentUserId()) {
+      t.checked = true;
+      toast("You cannot disable your own account.", "error");
+      return;
+    }
+    try {
+      await apiFetch("/api/v1/users/" + encodeURIComponent(uid), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: want }),
+      });
+      toast(want ? "User enabled" : "User disabled", "success");
+      await refreshTeamUsersTable();
+      loadTenantSubscription().catch(() => {});
+    } catch (e) {
+      t.checked = !want;
+      toast(e.message || "Update failed", "error");
+    }
+  });
+
+  document.getElementById("team-users-body")?.addEventListener("click", (ev) => {
+    const t = ev.target;
+    const rolesBtn = t.closest && t.closest(".btn-team-roles");
+    if (rolesBtn) {
+      const uid = rolesBtn.getAttribute("data-user-id");
+      if (uid) openTeamRolesDialog(uid);
+      return;
+    }
+  });
+
+  document.getElementById("team-roles-dialog-save")?.addEventListener("click", async () => {
+    const hid = document.getElementById("team-roles-target-user-id");
+    const uid = hid && hid.value;
+    if (!uid) return;
+    const roles = Array.from(document.querySelectorAll(".team-role-edit-cb:checked")).map(
+      (cb) => cb.value
+    );
+    if (!roles.length) {
+      toast("Select at least one role", "error");
+      return;
+    }
+    try {
+      await apiFetch("/api/v1/users/" + encodeURIComponent(uid) + "/roles", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roles }),
+      });
+      toast("Roles updated", "success");
+      closeTeamRolesDialog();
+      await refreshTeamUsersTable();
+    } catch (e) {
+      toast(e.message || "Save failed", "error");
+    }
+  });
+
+  document.getElementById("team-roles-dialog-cancel")?.addEventListener("click", closeTeamRolesDialog);
+  document.getElementById("team-roles-dialog-close")?.addEventListener("click", closeTeamRolesDialog);
+  document.getElementById("team-roles-dialog")?.addEventListener("click", (ev) => {
+    if (ev.target.id === "team-roles-dialog") closeTeamRolesDialog();
+  });
 
   function renderEmbedSnippetTemplate(secretPlaceholder) {
     const pre = document.getElementById("embed-snippet-template");

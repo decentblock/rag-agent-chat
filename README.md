@@ -12,7 +12,7 @@ Multi-tenant RAG platform with Flask: tenant-scoped collections, RBAC, Chroma em
 | **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | Step-by-step deployment (env, Gunicorn, nginx, systemd, backups) |
 | **[docs/TECHNICAL.md](docs/TECHNICAL.md)** | Full technical reference (architecture, config, APIs, agents, security) |
 
-After you run the app: **`/docs`** is the **Swagger/OpenAPI** explorer. **`FEATURES_SUMMARY`** + **`DEPLOYMENT`** render in the console for **platform superusers** at **`/super/guides`** (needs `markdown` for HTML). **`TECHNICAL.md`** is **`/super/technical`** (superusers).
+After you run the app: **`/docs`** is the **Swagger/OpenAPI** explorer. **`FEATURES_SUMMARY`** + **`DEPLOYMENT`** render in the console for **platform superusers** at **`/super/guides`** (needs `markdown` for HTML). **`TECHNICAL.md`** is **`/super/technical`** (superusers). **`/super/organisations`** is the cross-tenant console (plans, suspend orgs, billing stubs, agents, users); HTTP details are in **`docs/TECHNICAL.md`** §17.16.
 
 ---
 

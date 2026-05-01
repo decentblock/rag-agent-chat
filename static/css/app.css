@@ -702,3 +702,29 @@ a.nav-item {
     max-height: 42vh;
   }
 }
+
+.team-role-fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.team-role-checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+}
+
+.team-role-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+
+.team-role-label input {
+  width: auto;
+  margin: 0;
+}

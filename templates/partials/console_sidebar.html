@@ -1,4 +1,4 @@
-{# Expects: spa_tabs_enabled (bool), username, tenant_slug, is_superuser #}
+{# Expects: spa_tabs_enabled (bool), username, tenant_slug, is_superuser, can_manage_users (optional) #}
 {# Dashboard: buttons + SPA tabs. Platform settings: plain links including ?tab= for deep links. #}
 <aside class="sidebar" aria-label="Workspace navigation">
   <div class="sidebar-brand">
@@ -30,6 +30,12 @@
       <span class="nav-icon" aria-hidden="true">🌐</span>
       Embed
     </button>
+    {% if can_manage_users|default(false) %}
+    <button type="button" class="nav-item" data-tab="team">
+      <span class="nav-icon" aria-hidden="true">👥</span>
+      Team
+    </button>
+    {% endif %}
     {% else %}
     <a href="{{ url_for('dashboard') }}" class="nav-item nav-item-link">
       <span class="nav-icon" aria-hidden="true">◎</span>
@@ -51,12 +57,30 @@
       <span class="nav-icon" aria-hidden="true">🌐</span>
       Embed
     </a>
+    {% if can_manage_users|default(false) %}
+    <a href="{{ url_for('dashboard') }}?tab=team" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">👥</span>
+      Team
+    </a>
+    {% endif %}
     {% endif %}
     {% if is_superuser %}
     {% set _sn = super_nav|default('') %}
     <a href="{{ url_for('super_settings_page') }}" class="nav-item nav-item-link {% if _sn == 'settings' %}active{% endif %}" {% if _sn == 'settings' %}aria-current="page"{% endif %}>
       <span class="nav-icon" aria-hidden="true">⚙</span>
       Platform settings
+    </a>
+    <a href="{{ url_for('super_email_settings_page') }}" class="nav-item nav-item-link {% if _sn == 'email' %}active{% endif %}" {% if _sn == 'email' %}aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">✉</span>
+      Email &amp; SMTP
+    </a>
+    <a href="{{ url_for('super_organisations_page') }}" class="nav-item nav-item-link {% if _sn == 'orgs' %}active{% endif %}" {% if _sn == 'orgs' %}aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">🏢</span>
+      Organisations
+    </a>
+    <a href="{{ url_for('super_users_admin_page') }}" class="nav-item nav-item-link {% if _sn == 'users' %}active{% endif %}" {% if _sn == 'users' %}aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">👥</span>
+      Users
     </a>
     <a href="{{ url_for('super_guides_page') }}" class="nav-item nav-item-link {% if _sn == 'guides' %}active{% endif %}" {% if _sn == 'guides' %}aria-current="page"{% endif %}>
       <span class="nav-icon" aria-hidden="true">📘</span>

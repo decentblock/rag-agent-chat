@@ -84,7 +84,7 @@ On application load (`app.py`):
 2. `db.init_app(app)`, `register_principal_loader(app)`.  
 3. **`flask_cors.CORS`** registered for **`/api/embed/*`** using **`EMBED_CORS_ORIGINS`**.  
 4. `register_builtin_agents(replace=True)` registers all built-in agents.  
-5. **`init_database()`** runs: `db.create_all()`, **`_ensure_tenant_plan_columns()`** (adds **`plan_slug`**, **`usage_chat_month`**, **`usage_chat_count`** on **`tenants`** when missing on SQLite / Postgres), **`_ensure_api_keys_columns()`** (adds embed-related **`api_keys`** columns such as **`default_agent_id`**, **`agent_config_json`**, **`key_prefix`** when missing), **`_ensure_user_is_superuser_column()`** (adds **`users.is_superuser`** when missing), then **`seed_if_needed(...)`** (permissions including **`embed:keys`**, default tenant, roles, bootstrap admin, default collection; **`grant_embed_keys_to_existing_editors`** backfills Editors created before that permission existed). **`system_settings`** rows override landing marketing values when present — see **`services/marketing_settings.py`**.  
+5. **`init_database()`** runs: `db.create_all()`, **`_ensure_tenant_plan_columns()`** (adds **`plan_slug`**, **`usage_chat_month`**, **`usage_chat_count`**, and — when missing — **`tenants.is_active`**, **`billing_contact_email`**, **`payment_provider_customer_id`**, **`notes`**, **`allowed_agent_ids_json`** on SQLite / Postgres), **`_ensure_api_keys_columns()`** (adds embed-related **`api_keys`** columns such as **`default_agent_id`**, **`agent_config_json`**, **`key_prefix`** when missing), **`_ensure_user_is_superuser_column()`** (adds **`users.is_superuser`** when missing), then **`seed_if_needed(...)`** (permissions including **`embed:keys`**, default tenant, roles, bootstrap admin, default collection; **`grant_embed_keys_to_existing_editors`** backfills Editors created before that permission existed). **`system_settings`** rows override landing marketing values when present — see **`services/marketing_settings.py`**.  
 
 The dev server entrypoint warns if `ADMIN_BOOTSTRAP_PASSWORD == "changeme"`.
 
@@ -115,7 +115,7 @@ All keys live in **`config.py`** unless noted. Environment variables override de
 | `DEFAULT_TENANT_SLUG` | `DEFAULT_TENANT_SLUG` | `default` |
 | `REGISTRATION_ENABLED` | `REGISTRATION_ENABLED` | `true` — when enabled, **`GET`/`POST /register`** allow creating a new **`Tenant`** + first admin; disable with `false` / `0` / `no` |
 | `EMBED_CORS_ORIGINS` | `EMBED_CORS_ORIGINS` | Default **`*`**. For production embeds, set a comma-separated list of allowed **`Origin`** values (e.g. `https://www.customer.com,https://customer.com`). Applies only to **`/api/embed/*`** (methods **`POST`**, **`OPTIONS`**); headers allowed include **`Content-Type`**, **`Authorization`**, **`X-Nexura-Embed-Key`**. |
-| `BOOTSTRAP_SUPERUSER` | `BOOTSTRAP_SUPERUSER` | `false` — when **`true`**, the seeded bootstrap admin (**`ADMIN_BOOTSTRAP_*`**) gets **`users.is_superuser=True`** so they can open **`/super/settings`** |
+| `BOOTSTRAP_SUPERUSER` | `BOOTSTRAP_SUPERUSER` | `false` — when **`true`**, the seeded bootstrap admin (**`ADMIN_BOOTSTRAP_*`**) gets **`users.is_superuser=True`** so they can open **`/super/settings`**, **`/super/organisations`**, **`/super/guides`**, and **`/super/technical`** |
 | `MARKETING_PRICE_*` | `MARKETING_PRICE_STARTER_DISPLAY`, `MARKETING_PRICE_GROWTH_MONTHLY`, `MARKETING_PRICE_GROWTH_ANNUAL_EQUIV` | Strings shown on the landing pricing cards (defaults in **`config.py`**) |
 | `MARKETING_GROWTH_*_BLURB` | `MARKETING_GROWTH_MONTHLY_BLURB`, `MARKETING_GROWTH_ANNUAL_BLURB` | Short subtitles under Growth tier pricing |
 | — | — | **Contact sales** / **Request proposal** on the landing page link to **`/contact-sales`** and **`/request-proposal`** (forms → **`lead_inquiries`**). There are no URL env vars for those CTAs. |
@@ -138,6 +138,11 @@ Defined in **`models.py`**.
 | `plan_slug` | Subscription tier key (`starter`, `growth`, `enterprise`) — see **`plans_catalog.py`** |
 | `usage_chat_month` | UTC `YYYY-MM` for monthly chat counter rollover |
 | `usage_chat_count` | Successful chat turns counted this month when plan has a **`monthly_chat_quota`** |
+| `is_active` | When **`false`**, the organisation is **suspended**: tenant users cannot authenticate or load a principal; **`POST /api/embed/chat`** returns **403**; session is cleared if they were already logged in |
+| `billing_contact_email` | Optional billing contact (stub until payment integration) |
+| `payment_provider_customer_id` | Optional external customer reference (e.g. Stripe id) |
+| `notes` | Free-form operator notes |
+| `allowed_agent_ids_json` | Optional JSON array of **`agent_id`** strings — narrows which agents are effective for this tenant (see **`resolved_allowed_agent_ids`** in **`services/plan_enforcement.py`**); **`NULL`/unset** means “follow plan catalogue only” |
 
 ### 5.2 `permissions`
 
@@ -154,7 +159,7 @@ Per-tenant roles (`tenant_id` + `name` unique). Many-to-many with `permissions` 
 | `tenant_id`, `username` | Unique together |
 | `password_hash` | Werkzeug hash; nullable if external auth added later |
 | `email`, `is_active` | Profile / gate login |
-| `is_superuser` | When **`true`**, platform operator — may edit **`/super/settings`** (marketing overrides); unrelated to tenant RBAC roles |
+| `is_superuser` | When **`true`**, platform operator — console links under **Organisations**, **Platform settings**, **Product & deployment**, **Technical reference**; unrelated to tenant RBAC roles |
 | `roles` | Many-to-many via **`user_roles`** |
 
 ### 5.5 `collections`
@@ -193,7 +198,7 @@ Issued secrets look like **`nxemb_<12 hex>_<48 hex>`** — shown **once** at cre
 
 Form fields:
 
-- `tenant_slug` — resolves `Tenant`.  
+- `tenant_slug` — resolves `Tenant`. **Suspended** tenants (**`tenants.is_active = false`**) cause authentication to fail (same as unknown tenant / bad password).  
 - `username`, `password` — `User` in that tenant.  
 - Optional `remember` — `on` sets `session.permanent` (14-day lifetime from `permanent_session_lifetime`).  
 - Optional `next` — internal redirect path (must start with `/`, not `//`).
@@ -215,7 +220,14 @@ Clears session; redirects to **`/`** (landing).
 
 ### 6.4 Platform superuser (`superuser_required`)
 
-Users with **`users.is_superuser`** may **`GET`/`POST /super/settings`** (marketing + leads), **`GET /super/guides`** (**`FEATURES_SUMMARY.md`** + **`DEPLOYMENT.md`**), and **`GET /super/technical`** (**`TECHNICAL.md`**). Non-superusers receive **403** JSON on API-style paths or a redirect to the dashboard for HTML.
+Users with **`users.is_superuser`** may:
+
+- **`GET`/`POST /super/settings`** — marketing overrides + lead inbox  
+- **`GET /super/organisations`** — console UI to list tenants, edit **plan**, **suspension**, **billing stubs**, **per-tenant agent allowlist**, and toggle **user `is_active`** (cross-tenant)  
+- **`GET /super/guides`** — **`FEATURES_SUMMARY.md`** + **`DEPLOYMENT.md`**  
+- **`GET /super/technical`** — **`TECHNICAL.md`**  
+
+JSON APIs under **`/api/super/…`** (same guards) are documented in §17.16. Non-superusers receive **403** JSON on API-style paths or a redirect to the dashboard for HTML.
 
 Grant the flag via **`BOOTSTRAP_SUPERUSER=true`** on first seed, or **`UPDATE users SET is_superuser = 1 WHERE …`** on existing databases.
 
@@ -226,9 +238,9 @@ Grant the flag via **`BOOTSTRAP_SUPERUSER=true`** on first seed, or **`UPDATE us
 **`principal.register_principal_loader`**: before each request:
 
 - Sets `g.current_user = None`, `g.tenant = None`.  
-- If `session["user_id"]` present, loads `User` by id; if active, sets `g.current_user` and `g.tenant = user.tenant`.  
-
-Inactive or missing users behave as logged out.
+- If `session["user_id"]` present, loads `User` by id. **Inactive users** or **missing users** → **`session.pop("user_id")`** and return (logged out).  
+- Loads **`Tenant`** by **`user.tenant_id`**. **Inactive tenant** (**`tenants.is_active = false`**) → **`session.pop("user_id")`** and return — avoids redirect loops when an org is suspended after login.  
+- Otherwise sets `g.current_user` and `g.tenant`.
 
 ---
 
@@ -413,7 +425,7 @@ Unless stated, JSON bodies use `Content-Type: application/json`. Authenticated r
 ### 17.3a `GET /api/v1/tenant/subscription`
 
 - **Auth:** session  
-- **Response:** `200` — **`subscription_payload(tenant)`**: current **`plan_slug`**, **`limits`** (caps + optional **`allowed_agent_ids`** list), and **`usage`** (monthly chat count, seat/collection/embed-key counts)
+- **Response:** `200` — **`subscription_payload(tenant)`**: current **`plan_slug`**, **`limits`** (caps + effective **`allowed_agent_ids`** — `null` means all agents allowed for that plan tier), boolean **`agents_overridden_by_tenant`** when **`allowed_agent_ids_json`** is set on the tenant, and **`usage`** (monthly chat count, seat/collection/embed-key counts). Effective agents come from **`resolved_allowed_agent_ids`** (plan defaults intersected with optional tenant JSON whitelist when the plan defines a finite list).
 
 ### 17.4 `PUT /api/v1/me/agent-preference`
 
@@ -430,8 +442,8 @@ Unless stated, JSON bodies use `Content-Type: application/json`. Authenticated r
 - **Agent defaults:** if `agent_id` omitted, uses the key’s **`default_agent_id`** (or **`rag_document_qa`**). Config merges key **`agent_config_json`** with request **`agent_config`**.  
 - **Collections:** if the key defines **`allowed_collection_ids`**, retrieval is limited to that set; when the client omits `collection_ids`, **all allowed key collections** are used (not the whole tenant). Requested IDs must intersect the key allow-list.  
 - **Memory:** `session_id` is derived as `embed:<key_id>:<visitor_session>` (default visitor label `anon`) so LangChain memory partitions per visitor per key.  
-- **Plan / metering:** same **`Tenant`** as the key — **`chat_quota_blocked`** → **`429`**, **`agent_allowed_on_plan`** → **`403`**; **`record_successful_chat_turn`** after a successful **`run_chat_turn`**.  
-- **Errors:** `401` invalid key · `400` validation / scope  
+- **Plan / metering:** same **`Tenant`** as the key — inactive tenant → **`403`** `Organisation suspended`; **`chat_quota_blocked`** → **`429`**, **`agent_allowed_on_plan`** → **`403`**; **`record_successful_chat_turn`** after a successful **`run_chat_turn`**.  
+- **Errors:** `401` invalid key · **`403`** suspended org / agent not enabled · `400` validation / scope  
 
 #### `GET /api/v1/embed-keys` · `POST /api/v1/embed-keys` · `DELETE /api/v1/embed-keys/<key_id>`
 
@@ -528,6 +540,12 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 - **Permission:** `documents:read` (current app grouping)  
 - **Response:** `{ "agents": [ { agent_id, version, description }, ... ] }` from registry
 
+### 17.11a `GET /api/v1/roles`
+
+- **Auth:** session  
+- **Permission:** `users:manage`  
+- **Response:** `{ "roles": ["Admin", "Editor", "Viewer", ...] }` — role names for this tenant
+
 ### 17.12 `GET /api/v1/users`
 
 - **Auth:** session  
@@ -538,7 +556,7 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 
 - **Auth:** session  
 - **Permission:** `users:manage`  
-- **Body:** `{ "username", "password", "roles": ["Viewer", ...] }`  
+- **Body:** `{ "username", "password", "roles": ["Viewer", ...], "email"?: string }`  
 - **Success:** `201` `{ id, username }`  
 - **Errors:** `400` missing fields / no roles matched; **`403`** at **`max_users`**; `409` duplicate user
 
@@ -551,7 +569,22 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 ### 17.15 `PUT /api/v1/users/<user_id>/roles`
 
 - **Body:** `{ "roles": ["Admin", ...] }` — unique role names in tenant  
-- **Response:** `200` `{ id, roles }` or `400`/`404`
+- **Response:** `200` `{ id, roles }` or `400`/`404`  
+- **Guard:** cannot remove your own **`users:manage`** / **`*`** access (must keep at least one role that grants user administration).
+
+### 17.16 Platform super APIs (`/api/super/*`)
+
+All routes: **session** cookie · **`superuser_required`** ( **`403`** if not platform superuser).
+
+| Method | Path | Body / notes | Response |
+|--------|------|----------------|----------|
+| `GET` | `/api/super/tenants` | — | `{ "tenants": [ { id, name, slug, plan_slug, is_active, users_count, created_at }, ... ] }` |
+| `GET` | `/api/super/tenants/<tenant_id>` | — | `{ "tenant": { … }, "plan_allowed_agent_ids": list \| null, "plan_options": [ { slug, label, allowed_agent_ids }, … ] }` — each **`plan_options`** row mirrors **`plans_catalog`** for that slug ( **`allowed_agent_ids`** may be **`null`** = all agents). **`plan_allowed_agent_ids`** reflects the tenant’s **current** plan. |
+| `PATCH` | `/api/super/tenants/<tenant_id>` | JSON: optional **`name`** (display name, non-empty string), **`plan_slug`**, **`is_active`**, **`billing_contact_email`**, **`payment_provider_customer_id`**, **`notes`**, **`allowed_agent_ids`** (`null` = clear tenant override; array is stored **after** dropping any ids not allowed by the **new** plan finite list—same rule as enforcement) | Updated detail object · **`400`** on unknown plan, empty name, or bad payload |
+| `GET` | `/api/super/tenants/<tenant_id>/users` | — | `{ "users": [ { id, username, email, is_active, is_superuser, roles }, … ] }` |
+| `PATCH` | `/api/super/users/<user_id>` | `{ "is_active"?: boolean, "password"?: string }` — password minimum **8** characters (same as self-service signup); hashes with Werkzeug (`generate_password_hash`). Cannot disable **your own** account (**`400`**). | `{ "user": { id, tenant_id, username, is_active, password_updated?: boolean } }` — **`password_updated`** is **`true`** when **`password`** was present in the body |
+
+Implementation: **`services/super_org_admin.py`**. Console page **`/super/organisations`** uses **`static/js/super_orgs.js`**.
 
 ---
 
@@ -570,7 +603,8 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 | `/register` | POST | — | Provision tenant + first admin (**422** validation; **`abort(404)`** when disabled) |
 | `/logout` | POST | — | Clear session → `/` |
 | `/super/settings` | GET/POST | `login_required`, **`superuser_required`** | Platform marketing overrides + lead inbox |
-| `/app` | GET | `login_required` | Dashboard console (Overview, Agents, Chat, Knowledge base, **Embed**) |
+| `/super/organisations` | GET | `login_required`, **`superuser_required`** | Cross-tenant org console (plans, suspension, billing stubs, agents, users) |
+| `/app` | GET | `login_required` | Dashboard console (Overview, Agents, Chat, Knowledge base, **Embed**, **Team** when `users:manage`) |
 
 ---
 
@@ -581,11 +615,12 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 - **`static/css/landing.css`** — marketing  
 - **`static/css/docs.css`** — documentation typography  
 - **`static/js/app.js`** — dashboard tabs, marketplace, chat, library, **embed key CRUD + snippet UI**  
+- **`static/js/super_orgs.js`** — platform **Organisations** console (**`/super/organisations`**)  
 - **`static/embed/nexura-chat.js`** — customer-site floating chat widget (fetches **`POST /api/embed/chat`**)  
 
-Templates: **`templates/base.html`**, **`landing.html`**, **`login.html`**, **`register.html`**, **`dashboard.html`** (includes **`nexura-console-bootstrap`**), **`docs.html`** (Swagger UI only), **`super_settings.html`**, **`super_guides.html`**, **`super_technical.html`**.
+Templates: **`templates/base.html`**, **`landing.html`**, **`login.html`**, **`register.html`**, **`dashboard.html`** (includes **`nexura-console-bootstrap`**), **`docs.html`** (Swagger UI only), **`super_settings.html`**, **`super_orgs.html`**, **`super_guides.html`**, **`super_technical.html`**.
 
-Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), **`services/embed_key_service.py`**, **`services/agent_preferences.py`**, **`services/plan_enforcement.py`**, **`services/tenant_provisioning.py`**, **`plans_catalog.py`**.
+Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), **`services/embed_key_service.py`**, **`services/agent_preferences.py`**, **`services/plan_enforcement.py`**, **`services/super_org_admin.py`**, **`services/tenant_provisioning.py`**, **`plans_catalog.py`**.
 
 ---
 
@@ -613,21 +648,24 @@ Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), 
 1. **New agent:** implement `Agent`, register in **`agents/bootstrap.py`**, add **`MARKETPLACE_AGENTS`** row with matching `agent_id` and `available`.  
 2. **New permission:** add code in **`seed_database.PERMISSION_CODES`** and **`ROLE_MATRIX`**, migrate DB or re-seed carefully.  
 3. **API keys:** tenant **`ApiKey`** rows power **`POST /api/embed/chat`**; tune **`EMBED_CORS_ORIGINS`** for customer domains.  
-4. **Billing:** map Growth/Enterprise tiers to metering (tokens, storage) externally.  
+4. **Billing:** map Growth/Enterprise tiers to metering (tokens, storage) externally. **`tenants.billing_contact_email`** / **`payment_provider_customer_id`** are operator-editable stubs until a gateway is integrated.  
+5. **Platform operators:** protect **`users.is_superuser`** accounts; **`PATCH /api/super/*`** can change another tenant’s **`plan_slug`**, suspend organisations, and disable users — rely on **`SESSION_SECRET`**, HTTPS, and DB access controls.  
 
 ---
 
 ## 23. Deployment (companion guide)
 
-Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, and optional containers are maintained in **`docs/DEPLOYMENT.md`**, rendered with **`docs/FEATURES_SUMMARY.md`** for platform superusers at **`/super/guides`**. The **HTTP API** is **Swagger UI** on public **`/docs`** (spec **`/api/openapi.json`**). This **`TECHNICAL.md`** file is served at **`/super/technical`**.
+Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, and optional containers are maintained in **`docs/DEPLOYMENT.md`**, rendered with **`docs/FEATURES_SUMMARY.md`** for platform superusers at **`/super/guides`**. The **HTTP API** is **Swagger UI** on public **`/docs`** (spec **`/api/openapi.json`**). This **`TECHNICAL.md`** file is served at **`/super/technical`**. Organisation administration UI lives at **`/super/organisations`**; REST endpoints are §17.16.
 
 ---
 
 ## 24. Plans, registration & quotas
 
-- **Catalog:** **`plans_catalog.PLANS`** defines **`starter`**, **`growth`**, **`enterprise`** with optional caps (**`max_users`**, **`monthly_chat_quota`**, **`max_collections`**, **`max_embed_keys`**) and optional **`allowed_agent_ids`** (`None` = all installed marketplace agents).  
+- **Catalog:** **`plans_catalog.PLANS`** defines **`starter`**, **`growth`**, **`enterprise`** with optional caps (**`max_users`**, **`monthly_chat_quota`**, **`max_collections`**, **`max_embed_keys`**) and optional **`allowed_agent_ids`** (`None` = all installed marketplace agents for that tier).  
+- **Tenant overrides:** **`tenants.allowed_agent_ids_json`** (optional) stores a JSON array of **`agent_id`** strings. **`resolved_allowed_agent_ids`** in **`services/plan_enforcement.py`** applies it on top of the plan: if the plan has a finite allowlist, the effective set is the **intersection**; if the plan allows all agents (`None`), the tenant list is the whitelist (an empty array blocks every agent). **`GET /api/v1/tenant/subscription`** exposes **`limits.agents_overridden_by_tenant`** when the JSON column is set. **`PATCH /api/super/tenants/<id>`** drops any submitted ids outside the plan’s finite allowlist before saving. The **`/super/organisations`** UI lists marketplace agents (**`available`**); agents **not on the plan** or **not installed** on the server appear **disabled** until the plan changes or the agent is deployed.  
+- **Suspension:** **`tenants.is_active = false`** suspends the organisation (login denied, principal cleared with **`session.pop("user_id")`**, embed chat **403**). Managed via **`/super/organisations`** or **`PATCH /api/super/tenants/<id>`**.  
 - **Provisioning:** **`services/tenant_provisioning.provision_new_organization`** creates **`Tenant`**, clones **`ROLE_MATRIX`** roles for that tenant only, creates the first **Admin** user, **`ensure_default_collection`**, and commits.  
-- **Enforcement:** **`services/plan_enforcement.py`** — **`subscription_payload`**, **`agent_allowed_on_plan`**, **`chat_quota_blocked`**, **`record_successful_chat_turn`**, **`check_can_add_user`**, **`check_can_add_collection`**, **`check_can_add_embed_key`**. Wired in **`app.py`** for **`PUT /api/v1/me/agent-preference`**, **`POST /chat`**, **`POST /api/embed/chat`**, **`POST /api/v1/users`**, **`POST /api/v1/embed-keys`**, and collection auto-create on **`POST /upload-document`**.  
+- **Enforcement:** **`services/plan_enforcement.py`** — **`subscription_payload`**, **`resolved_allowed_agent_ids`**, **`agent_allowed_on_plan`**, **`chat_quota_blocked`**, **`record_successful_chat_turn`**, **`check_can_add_user`**, **`check_can_add_collection`**, **`check_can_add_embed_key`**. Wired in **`app.py`** for **`PUT /api/v1/me/agent-preference`**, **`POST /chat`**, **`POST /api/embed/chat`**, **`POST /api/v1/users`**, **`POST /api/v1/embed-keys`**, and collection auto-create on **`POST /upload-document`**.  
 - **Registration:** **`REGISTRATION_ENABLED`** (`config.py`) gates **`/register`** and marketing links. **`GET /api/public/plans`** lists safe plan metadata for the signup form.  
 
 ---

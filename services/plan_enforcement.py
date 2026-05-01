@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from extensions import db
@@ -12,6 +13,37 @@ from plans_catalog import get_plan_limits, normalize_plan_slug
 def _tenant_plan_slug(tenant: Tenant) -> str:
     raw = getattr(tenant, "plan_slug", None)
     return normalize_plan_slug(raw) if raw else "growth"
+
+
+def resolved_allowed_agent_ids(tenant: Tenant) -> list[str] | None:
+    """Effective agent allowlist: plan default, optionally narrowed by tenant JSON override.
+
+    - Plan ``allowed_agent_ids`` is ``None`` → any registered/marketplace agent unless tenant overrides.
+    - Tenant ``allowed_agent_ids_json`` unset → use plan rule only.
+    - Tenant JSON set → whitelist intersected with plan list when plan has a finite list;
+      when plan is unrestricted (``None``), tenant list is used as-is (may be empty = block all).
+    """
+    slug = _tenant_plan_slug(tenant)
+    limits = get_plan_limits(slug)
+    plan_allowed = limits.get("allowed_agent_ids")
+
+    raw = getattr(tenant, "allowed_agent_ids_json", None)
+    if raw is None or str(raw).strip() == "":
+        return plan_allowed
+
+    try:
+        arr = json.loads(raw)
+        if not isinstance(arr, list):
+            return plan_allowed
+        tenant_list = [str(x).strip().lower() for x in arr if str(x).strip()]
+    except json.JSONDecodeError:
+        return plan_allowed
+
+    if plan_allowed is None:
+        return tenant_list
+
+    plan_set = {str(x).strip().lower() for x in plan_allowed}
+    return [x for x in tenant_list if x in plan_set]
 
 
 def subscription_payload(tenant: Tenant) -> dict:
@@ -27,6 +59,10 @@ def subscription_payload(tenant: Tenant) -> dict:
     cols = Collection.query.filter_by(tenant_id=tenant.id).count()
     embed_n = ApiKey.query.filter_by(tenant_id=tenant.id, is_active=True).count()
 
+    raw_override = getattr(tenant, "allowed_agent_ids_json", None)
+    agents_overridden = bool(raw_override and str(raw_override).strip())
+    eff_agents = resolved_allowed_agent_ids(tenant)
+
     return {
         "plan_slug": slug,
         "plan_label": limits.get("label", slug),
@@ -35,7 +71,8 @@ def subscription_payload(tenant: Tenant) -> dict:
             "monthly_chat_quota": quota,
             "max_collections": limits.get("max_collections"),
             "max_embed_keys": limits.get("max_embed_keys"),
-            "allowed_agent_ids": limits.get("allowed_agent_ids"),
+            "allowed_agent_ids": eff_agents,
+            "agents_overridden_by_tenant": agents_overridden,
         },
         "usage": {
             "chat_month": month,
@@ -49,15 +86,15 @@ def subscription_payload(tenant: Tenant) -> dict:
 
 def agent_allowed_on_plan(tenant: Tenant, agent_id: str) -> tuple[bool, str | None]:
     limits = get_plan_limits(_tenant_plan_slug(tenant))
-    allowed = limits.get("allowed_agent_ids")
+    allowed = resolved_allowed_agent_ids(tenant)
     aid = agent_id.strip().lower()
     if allowed is None:
         return True, None
-    if aid in {x.strip().lower() for x in allowed}:
+    if aid in allowed:
         return True, None
     return (
         False,
-        f"Agent '{aid}' is not included in your plan ({limits.get('label')}). Upgrade to unlock more agents.",
+        f"Agent '{aid}' is not enabled for this organisation ({limits.get('label')}).",
     )
 
 

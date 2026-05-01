@@ -412,6 +412,15 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                     "responses": {"200": {"description": "`{ agents: [...] }`"}},
                 }
             },
+            "/api/v1/roles": {
+                "get": {
+                    "tags": ["Users"],
+                    "summary": "List role names for tenant",
+                    "operationId": "listTenantRoles",
+                    "security": [{"SessionCookie": []}],
+                    "responses": {"200": {"description": "`{ roles: [\"Admin\", ...] }`"}},
+                }
+            },
             "/api/v1/users": {
                 "get": {
                     "tags": ["Users"],
@@ -433,6 +442,7 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                                     "properties": {
                                         "username": {"type": "string"},
                                         "password": {"type": "string"},
+                                        "email": {"type": "string"},
                                         "roles": {"type": "array", "items": {"type": "string"}},
                                     },
                                     "required": ["username", "password"],

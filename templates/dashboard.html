@@ -6,7 +6,7 @@
 {% block body_class %}page-dashboard{% endblock %}
 {% block body %}
 
-<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" hidden aria-hidden="true"></div>
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" hidden aria-hidden="true"></div>
 
 <div class="app-shell">
   {% include "partials/console_sidebar.html" %}
@@ -39,6 +39,9 @@
             <li>Upload PDF / TXT under <strong>Knowledge base</strong> into tenant collections.</li>
             <li>Open <strong>Chat</strong> — scoped collections merge with your RBAC automatically.</li>
             <li>Use <strong>Embed</strong> to mint API keys and paste the widget snippet on customer sites.</li>
+            {% if can_manage_users %}
+            <li>Under <strong>Team</strong>, invite colleagues and assign <strong>Admin</strong>, <strong>Editor</strong>, or <strong>Viewer</strong>.</li>
+            {% endif %}
           </ul>
         </article>
       </div>
@@ -211,8 +214,83 @@
         </article>
       </div>
     </section>
+
+    {% if can_manage_users %}
+    <section id="panel-team" class="panel" hidden>
+      <div class="grid-stack">
+        <article class="card card-elevated">
+          <h3 class="card-title">Add team member</h3>
+          <p class="muted card-lead">Creates a user for <strong>{{ tenant_slug }}</strong>. The <strong>Active</strong> checkbox controls whether someone can sign in — turn off to suspend access without deleting the account.</p>
+          <form id="team-add-form" class="grid-stack" style="gap:0.85rem;">
+            <label class="field">
+              <span class="field-label">Username</span>
+              <input type="text" id="team-add-username" class="input" required maxlength="128" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="field-label">Password</span>
+              <input type="password" id="team-add-password" class="input" required autocomplete="new-password" />
+            </label>
+            <label class="field">
+              <span class="field-label">Email <span class="muted">(optional)</span></span>
+              <input type="email" id="team-add-email" class="input" maxlength="255" autocomplete="off" />
+            </label>
+            <fieldset class="team-role-fieldset">
+              <legend class="field-label">Roles</legend>
+              <p class="muted" style="margin:0 0 0.5rem;font-size:0.82rem;">Pick at least one. Admin can manage users and all tenant settings; Editor manages KB; Viewer is read/chat.</p>
+              <div id="team-add-role-checkboxes" class="team-role-checkbox-grid"></div>
+            </fieldset>
+            <button type="submit" class="btn btn-primary">Create user</button>
+          </form>
+        </article>
+
+        <article class="card card-elevated">
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">Team members</h3>
+              <p class="muted card-lead">Tenant-scoped · RBAC enforced on every API call. Use <strong>Active</strong> to enable or disable sign-in.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-team">Refresh</button>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Roles</th>
+                  <th class="center">Active</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="team-users-body">
+                <tr><td colspan="5" class="muted center">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+    {% endif %}
   </main>
 </div>
+
+<dialog id="team-roles-dialog" class="dialog sheet-wide">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <div>
+        <h3 id="team-roles-dialog-title">Edit roles</h3>
+        <p class="muted" id="team-roles-dialog-sub" style="margin:0.25rem 0 0;font-size:0.88rem;"></p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="team-roles-dialog-close">Close</button>
+    </header>
+    <input type="hidden" id="team-roles-target-user-id" value="" />
+    <div id="team-roles-dialog-fields" class="team-role-checkbox-grid" style="margin-top:1rem;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:0.65rem;margin-top:1.25rem;">
+      <button type="button" class="btn btn-secondary" id="team-roles-dialog-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="team-roles-dialog-save">Save roles</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog id="agent-settings-dialog" class="dialog sheet-wide">
   <div class="dialog-inner">
