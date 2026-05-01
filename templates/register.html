@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Create organisation · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+{% endblock %}
+{% block body_class %}page-login{% endblock %}
+{% block body %}
+{% set f = form or {} %}
+<div class="login-shell">
+  <div class="login-card card-elevated">
+    <p style="margin:0 0 1rem;"><a href="{{ url_for('index') }}" style="color:var(--muted);font-size:0.88rem;text-decoration:none;">← Nexura home</a></p>
+    <div class="login-brand">
+      <span class="logo-mark" aria-hidden="true">N</span>
+      <div>
+        <h1 class="login-title">Create your organisation</h1>
+        <p class="login-sub">Pick a plan, choose a URL slug, and create the first admin. You can invite users after sign‑in.</p>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="banner banner-error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <form class="login-form" method="post" action="{{ url_for('register_submit') }}" autocomplete="on">
+      <label class="field">
+        <span class="field-label">Organisation name</span>
+        <input type="text" name="organization_name" required class="input"
+               value="{{ f.organization_name or '' }}" placeholder="Acme Corp" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Organisation URL slug</span>
+        <input type="text" name="organization_slug" required class="input" pattern="[a-zA-Z0-9][a-zA-Z0-9\-]*"
+               title="Letters, numbers, hyphens; used at login."
+               value="{{ f.organization_slug or '' }}" placeholder="acme-corp" />
+        <span class="muted" style="font-size:0.8rem;">Used when signing in (lowercase, hyphenated).</span>
+      </label>
+
+      <fieldset class="field" style="border:none;padding:0;margin:0;">
+        <legend class="field-label" style="margin-bottom:0.5rem;">Plan</legend>
+        {% for p in plans %}
+        <label class="checkbox-row" style="align-items:flex-start;">
+          <input type="radio" name="plan_slug" value="{{ p.slug }}" required
+                 {% if (f.plan_slug or 'starter') == p.slug %}checked{% endif %} />
+          <span>
+            <strong>{{ p.label }}</strong> —
+            <span class="muted">{{ p.description }}</span>
+            <span class="muted" style="display:block;font-size:0.82rem;margin-top:0.25rem;">
+              {% if p.max_users != none %}Up to {{ p.max_users }} users{% else %}Unlimited users{% endif %}
+              · {% if p.monthly_chat_quota != none %}{{ p.monthly_chat_quota }} chats/mo{% else %}Unlimited chats{% endif %}
+              · {% if p.agent_scope == 'subset' %}Limited agents{% else %}All marketplace agents{% endif %}
+            </span>
+          </span>
+        </label>
+        {% endfor %}
+      </fieldset>
+
+      <label class="field">
+        <span class="field-label">Admin username</span>
+        <input type="text" name="admin_username" required autocomplete="username" class="input"
+               value="{{ f.admin_username or '' }}" placeholder="you" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Admin email (optional)</span>
+        <input type="email" name="admin_email" autocomplete="email" class="input"
+               value="{{ f.admin_email or '' }}" placeholder="you@company.com" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Admin password</span>
+        <input type="password" name="admin_password" required minlength="8" autocomplete="new-password" class="input"
+               placeholder="At least 8 characters" />
+      </label>
+
+      <button type="submit" class="btn btn-primary btn-block">Create organisation</button>
+    </form>
+
+    <p class="login-hint muted">
+      Already have an account?
+      <a href="{{ url_for('login_page') }}">Sign in</a>.
+      Plans define quotas (users, chats, collections, embed keys); see <code>plans_catalog.py</code> to tune.
+    </p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Console · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+{% endblock %}
+{% block body_class %}page-dashboard{% endblock %}
+{% block body %}
+
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" hidden aria-hidden="true"></div>
+
+<div class="app-shell">
+  <aside class="sidebar" aria-label="Workspace navigation">
+    <div class="sidebar-brand">
+      <span class="logo-mark" aria-hidden="true">N</span>
+      <span>Nexura</span>
+    </div>
+    <div class="console-home">
+      <a href="{{ url_for('index') }}">← Marketing site</a>
+    </div>
+    <nav class="nav">
+      <button type="button" class="nav-item active" data-tab="overview" aria-current="page">
+        <span class="nav-icon" aria-hidden="true">◎</span>
+        Overview
+      </button>
+      <button type="button" class="nav-item" data-tab="agents">
+        <span class="nav-icon" aria-hidden="true">◇</span>
+        Agents
+      </button>
+      <button type="button" class="nav-item" data-tab="chat">
+        <span class="nav-icon" aria-hidden="true">💬</span>
+        Chat
+      </button>
+      <button type="button" class="nav-item" data-tab="library">
+        <span class="nav-icon" aria-hidden="true">📚</span>
+        Knowledge base
+      </button>
+      <button type="button" class="nav-item" data-tab="embed">
+        <span class="nav-icon" aria-hidden="true">🌐</span>
+        Embed
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <span class="user-dot" aria-hidden="true"></span>
+        <span class="user-name">{{ username }} · {{ tenant_slug }}</span>
+      </div>
+      <form method="post" action="{{ url_for('logout') }}" class="logout-form">
+        <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="main-header">
+      <h2 class="main-title" id="panel-title">Overview</h2>
+      <p class="main-desc" id="panel-desc">Service status and quick checks.</p>
+    </header>
+
+    <div id="subscription-strip" class="subscription-strip muted" hidden aria-live="polite"></div>
+
+    <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+
+    <section id="panel-overview" class="panel active" aria-labelledby="panel-title">
+      <div class="grid-2">
+        <article class="card card-elevated">
+          <h3 class="card-title">API health</h3>
+          <p class="muted card-lead">Synthetic probe · <code>GET /health</code></p>
+          <div class="status-row">
+            <span id="health-badge" class="badge badge-muted">Checking…</span>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-health">Refresh</button>
+          </div>
+          <pre id="health-raw" class="code-block muted empty">—</pre>
+        </article>
+        <article class="card card-elevated">
+          <h3 class="card-title">Workflow</h3>
+          <ul class="tips">
+            <li>Pick an agent under <strong>Agents</strong> and configure retrieval hints.</li>
+            <li>Upload PDF / TXT under <strong>Knowledge base</strong> into tenant collections.</li>
+            <li>Open <strong>Chat</strong> — scoped collections merge with your RBAC automatically.</li>
+            <li>Use <strong>Embed</strong> to mint API keys and paste the widget snippet on customer sites.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="panel-agents" class="panel" hidden>
+      <div class="market-banner">
+        <div>
+          <h3>Agent marketplace</h3>
+          <p>Select which packaged workflow powers Chat and embeddings. Available agents run locally on your tenant data.</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-reload-marketplace">Reload catalog</button>
+      </div>
+      <p id="marketplace-status" class="muted" style="margin-bottom:1rem;font-size:0.88rem;"></p>
+      <div id="marketplace-grid" class="agent-market-grid" aria-busy="true">
+        <p class="muted">Loading marketplace…</p>
+      </div>
+      <p class="muted" style="margin-top:1rem;font-size:0.82rem;">
+        Developers onboard agents via <code>agents/bootstrap.py</code> + <code>agent_catalog.py</code>.
+      </p>
+    </section>
+
+    <section id="panel-chat" class="panel" hidden>
+      <div class="chat-layout card card-elevated">
+        <div class="chat-agent-bar">
+          <span class="muted">Active agent</span>
+          <strong id="chat-active-agent">—</strong>
+          <span class="badge badge-accent" id="chat-agent-badge" hidden></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-agent-quick-setup">Configure…</button>
+        </div>
+        <div class="chat-toolbar">
+          <p class="muted" style="margin:0;font-size:0.85rem;flex:1;">
+            Retrieval respects Knowledge base collection dropdown · tenant‑scoped memories · citations surfaced automatically.
+          </p>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-reset-chat">Clear transcript</button>
+        </div>
+        <div id="chat-transcript" class="chat-transcript" role="log" aria-relevant="additions"></div>
+        <form id="chat-form" class="chat-form">
+          <label class="field sr-only" for="chat-input">Message</label>
+          <textarea id="chat-input" class="input textarea" rows="3" placeholder="Ask your grounded assistant…" required></textarea>
+          <div class="chat-actions">
+            <button type="submit" class="btn btn-primary" id="btn-send-chat">Send</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="panel-library" class="panel" hidden>
+      <div class="grid-stack">
+        <article class="card card-elevated">
+          <h3 class="card-title">Upload document</h3>
+          <p class="muted card-lead">PDF or TXT · Editor role · RBAC enforced server‑side</p>
+          <form id="upload-form" class="upload-form">
+            <label class="field">
+              <span class="field-label">Collection slug / label</span>
+              <input type="text" name="collection_name" class="input" required placeholder="e.g. general" />
+            </label>
+            <label class="field">
+              <span class="field-label">Module tag</span>
+              <input type="text" name="module" class="input" value="DEFAULT" placeholder="DEFAULT" />
+            </label>
+            <label class="field">
+              <span class="field-label">File</span>
+              <input type="file" name="file" accept=".pdf,.txt" required class="input" />
+            </label>
+            <button type="submit" class="btn btn-primary">Upload &amp; index</button>
+          </form>
+        </article>
+
+        <article class="card card-elevated">
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">Collections &amp; documents</h3>
+              <p class="muted card-lead">Tenant‑scoped listing · previews embed retrieval chunks only.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-library">Refresh</button>
+          </div>
+
+          <label class="field">
+            <span class="field-label">Scope chats / browsing</span>
+            <select id="collection-select" class="input">
+              <option value="">— All collections (tenant‑wide) —</option>
+            </select>
+          </label>
+
+          <div class="table-wrap">
+            <table class="table" id="documents-table">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Module</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="documents-body">
+                <tr><td colspan="3" class="muted center">Pick a collection to see rows.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="panel-embed" class="panel" hidden>
+      <div class="grid-stack">
+        <article class="card card-elevated">
+          <h3 class="card-title">Website chat widget</h3>
+          <p class="muted card-lead">
+            Paste this snippet before <code>&lt;/body&gt;</code> on any site. Replace
+            <code>YOUR_EMBED_API_KEY</code> after creating a key below. Set
+            <code>EMBED_CORS_ORIGINS</code> on the server to allow customer origins (comma-separated;
+            avoid <code>*</code> in production).
+          </p>
+          <pre id="embed-snippet-template" class="code-block" style="white-space:pre-wrap;font-size:0.82rem;"></pre>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-embed-snippet">
+            Copy snippet
+          </button>
+        </article>
+
+        <article class="card card-elevated">
+          <h3 class="card-title">Create embed key</h3>
+          <p class="muted card-lead">
+            Keys are scoped to this tenant. Optional collection restrict limits retrieval to selected KB
+            collections only.
+          </p>
+          <form id="embed-key-form" class="grid-stack" style="gap:0.85rem;">
+            <label class="field">
+              <span class="field-label">Label</span>
+              <input type="text" id="embed-key-name" class="input" required placeholder="e.g. Marketing site" />
+            </label>
+            <label class="field">
+              <span class="field-label">Default agent (optional)</span>
+              <select id="embed-key-agent" class="input">
+                <option value="">— Marketplace default (Document Q&amp;A) —</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Restrict to collections (optional)</span>
+              <select id="embed-key-collections" class="input" multiple size="5"></select>
+              <span class="muted" style="font-size:0.78rem;">Cmd/Ctrl-click to multi-select · empty = all tenant collections</span>
+            </label>
+            <button type="submit" class="btn btn-primary">Generate key</button>
+          </form>
+          <p id="embed-key-created" class="muted" style="margin-top:1rem;display:none;"></p>
+        </article>
+
+        <article class="card card-elevated">
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">Active keys</h3>
+              <p class="muted card-lead">Prefix only · revoke if leaked.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-embed-keys">Refresh</button>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Prefix</th>
+                  <th>Status</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="embed-keys-body">
+                <tr><td colspan="4" class="muted center">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="agent-settings-dialog" class="dialog sheet-wide">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <div>
+        <h3 id="agent-settings-title">Agent setup</h3>
+        <p class="muted" id="agent-settings-sub" style="margin:0.25rem 0 0;font-size:0.88rem;"></p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="agent-settings-close">Close</button>
+    </header>
+    <div id="agent-settings-fields" class="grid-stack" style="margin-top:1rem;gap:0.85rem;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:0.65rem;margin-top:1.25rem;">
+      <button type="button" class="btn btn-secondary" id="agent-settings-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="agent-settings-save">Save &amp; use</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="chunks-dialog" class="dialog">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h3 id="chunks-dialog-title">Chunk preview</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="chunks-dialog-close">Close</button>
+    </header>
+    <p class="muted" id="chunks-dialog-meta"></p>
+    <div id="chunks-dialog-body" class="chunks-body"></div>
+  </div>
+</dialog>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+{% endblock %}

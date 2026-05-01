@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Nexura · Multi-tenant knowledge &amp; AI agents{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}" />
+{% endblock %}
+{% block body_class %}page-landing{% endblock %}
+{% block body %}
+{% set agent_icons = {'layers': '▦', 'search': '⌕', 'lifebuoy': '◎', 'table': '#'} %}
+
+<header class="ld-nav">
+  <div class="ld-nav-inner">
+    <a class="ld-brand" href="{{ url_for('index') }}">
+      <span class="ld-brand-mark" aria-hidden="true">N</span>
+      Nexura
+    </a>
+    <nav class="ld-nav-links" aria-label="Primary">
+      <a href="#features">Features</a>
+      <a href="#agents">Agents</a>
+      <a href="#pricing">Pricing</a>
+      <a href="{{ url_for('docs_page') }}">Documentation</a>
+    </nav>
+    <div class="ld-nav-actions">
+      {% if logged_in %}
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('dashboard') }}">Open console</a>
+      {% else %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('login_page') }}">Sign in</a>
+      {% if registration_enabled %}
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('register_page') }}">Create organisation</a>
+      {% endif %}
+      <a class="btn btn-primary btn-sm" href="{{ url_for('login_page') }}">Open console</a>
+      {% endif %}
+    </div>
+  </div>
+</header>
+
+<section class="ld-hero">
+  <div class="ld-max ld-hero-grid">
+    <div>
+      <p class="ld-kicker">Enterprise-ready RAG platform</p>
+      <h1 class="ld-h1">Knowledge that stays tenant‑safe — agents your teams actually adopt.</h1>
+      <p class="ld-lead">
+        Nexura combines vector search, RBAC, and a live agent marketplace. Pick a workflow,
+        tune instructions once, and chat with answers grounded in your own collections — no cross‑tenant bleed.
+      </p>
+      <div class="ld-hero-cta">
+        {% if logged_in %}
+        <a class="btn btn-primary btn-lg" href="{{ url_for('dashboard') }}">Go to console</a>
+        {% else %}
+        <a class="btn btn-primary btn-lg" href="{{ url_for('login_page') }}">Launch console</a>
+        {% if registration_enabled %}
+        <a class="btn btn-secondary btn-lg" href="{{ url_for('register_page') }}">Create organisation</a>
+        {% endif %}
+        {% endif %}
+        <a class="btn btn-secondary btn-lg" href="{{ url_for('docs_page') }}">Read documentation</a>
+      </div>
+      <div class="ld-metrics">
+        <div class="ld-stat">
+          <strong>Multi‑tenant</strong>
+          <span>Collections scoped per organisation</span>
+        </div>
+        <div class="ld-stat">
+          <strong>RBAC</strong>
+          <span>Admin · Editor · Viewer roles</span>
+        </div>
+        <div class="ld-stat">
+          <strong>4 live agents</strong>
+          <span>Configure after sign‑in; preference persists</span>
+        </div>
+      </div>
+    </div>
+    <div class="ld-hero-panel">
+      <div class="ld-hero-panel-head">
+        <span class="badge badge-accent">Agent marketplace</span>
+        <span class="muted" style="font-size:0.85rem;">Live today · same catalog in console</span>
+      </div>
+      <div class="ld-agent-mini-grid">
+        {% for a in marketplace_agents[:4] %}
+        <div class="ld-agent-mini {% if not a.installed %}ld-agent-mini-soon{% endif %}">
+          <div class="ld-agent-mini-icon" aria-hidden="true">{{ agent_icons.get(a.icon, '◇') }}</div>
+          <div>
+            <h4>{{ a.name }}{% if not a.installed %} <span class="badge badge-soon">Setup</span>{% elif a.badge %} <span class="badge badge-accent ld-badge-quiet">{{ a.badge }}</span>{% endif %}</h4>
+            <p>{{ a.tagline }}</p>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if not logged_in %}
+      <p class="muted" style="margin:1rem 0 0;font-size:0.88rem;">
+        Sign in to choose an agent, save onboarding fields (tone, dialect, instructions), and embed flows via APIs.
+      </p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="ld-section" id="features">
+  <div class="ld-max">
+    <h2 class="ld-section-title">Everything operators expect</h2>
+    <p class="ld-section-lead">
+      Ship grounded AI features without re‑architecting tenancy: scoped retrieval, audit‑friendly sources,
+      and agents registered in code — surfaced consistently on the landing page and in-product.
+    </p>
+    <div class="ld-features">
+      <article class="ld-feature">
+        <div class="ld-feature-icon">◎</div>
+        <h3>Isolation by design</h3>
+        <p>Collections, documents, and embeddings stay inside tenant boundaries. APIs reject foreign identifiers.</p>
+      </article>
+      <article class="ld-feature">
+        <div class="ld-feature-icon">⚡</div>
+        <h3>Grounded answers</h3>
+        <p>Agents retrieve from approved collections, cite sources, and inherit your saved preferences every session.</p>
+      </article>
+      <article class="ld-feature">
+        <div class="ld-feature-icon">◇</div>
+        <h3>Composable agents</h3>
+        <p>Register implementations once — marketplace metadata drives landing, console cards, and validation.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="ld-section ld-agents-section" id="agents">
+  <div class="ld-max">
+    <h2 class="ld-section-title">Agent marketplace</h2>
+    <p class="ld-section-lead">
+      Four production agents share secure retrieval with different workflow prompts — document Q&amp;A, research synthesis,
+      support routing, and read‑only SQL drafting from documented schema. Configure fields per user; chat merges them automatically.
+    </p>
+    <div class="ld-agent-cards">
+      {% for a in marketplace_agents %}
+      <article class="ld-agent-card {% if not a.installed %}ld-disabled{% endif %}">
+        <div class="ld-agent-card-head">
+          <span class="ld-agent-card-icon" aria-hidden="true">{{ agent_icons.get(a.icon, '◇') }}</span>
+          <div class="ld-agent-card-head-text">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+              <h3>{{ a.name }}</h3>
+              {% if a.badge %}<span class="badge {% if a.installed %}badge-accent{% else %}badge-soon{% endif %}">{{ a.badge }}</span>{% endif %}
+            </div>
+            <span class="ld-pill">{{ a.category }}</span>
+          </div>
+        </div>
+        <p class="tagline">{{ a.tagline }}</p>
+        <p class="desc">{{ a.description }}</p>
+        {% if a.registered_version %}
+        <p class="muted ld-agent-meta">Registry v{{ a.registered_version }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% if not logged_in %}
+    <div class="ld-agents-cta">
+      <a class="btn btn-primary" href="{{ url_for('login_page') }}">Sign in to configure agents</a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="ld-pricing-section" id="pricing">
+  <div class="ld-max">
+    <div class="ld-pricing-intro">
+      <h2 class="ld-section-title">Pricing</h2>
+      <p class="ld-section-lead ld-pricing-intro-lead">
+        Transparent tiers you can map to Stripe Billing later — meter storage and tokens when you connect usage data.
+      </p>
+
+      <div class="ld-pricing-root" data-pricing-root data-period="monthly">
+        <div class="ld-billing-switch" role="group" aria-label="Billing period">
+          <button type="button" class="ld-billing-opt" data-billing-trigger="monthly" aria-pressed="true">Monthly</button>
+          <button type="button" class="ld-billing-opt" data-billing-trigger="annual" aria-pressed="false">
+            Annual <span class="ld-billing-save">Save ~17%</span>
+          </button>
+        </div>
+
+        <div class="ld-pricing-grid">
+          <article class="ld-price-card ld-price-card-stripe">
+            <div class="ld-price-card-top">
+              <h3 class="ld-price-name">Starter</h3>
+              <p class="ld-price-blurb">Explore Nexura on a single tenant with core agents.</p>
+            </div>
+            <div class="ld-price-amount-row">
+              <span class="ld-price-currency">$</span>
+              <span class="ld-price-digits">0</span>
+              <div class="ld-price-suffix">
+                <span class="ld-price-period">/ month</span>
+                <span class="ld-price-sub muted">Forever free · fair use</span>
+              </div>
+            </div>
+            <ul class="ld-price-features">
+              <li><span class="ld-check" aria-hidden="true"></span>1 tenant &amp; seeded RBAC roles</li>
+              <li><span class="ld-check" aria-hidden="true"></span>All marketplace agents (same retrieval core)</li>
+              <li><span class="ld-check" aria-hidden="true"></span>Community quotas · SQLite-friendly</li>
+              <li><span class="ld-check" aria-hidden="true"></span>Email support via docs &amp; issues</li>
+            </ul>
+            <a class="btn btn-secondary btn-block ld-price-cta" href="{{ url_for('register_page') if registration_enabled else url_for('login_page') }}">{% if registration_enabled %}Register · Starter{% else %}Start building{% endif %}</a>
+          </article>
+
+          <article class="ld-price-card ld-price-card-stripe ld-price-card-highlight">
+            <div class="ld-price-ribbon">Most popular</div>
+            <div class="ld-price-card-top">
+              <h3 class="ld-price-name">Growth</h3>
+              <p class="ld-price-blurb">Higher ingestion limits and routing options for product teams.</p>
+            </div>
+            <div class="ld-price-amount-row">
+              <span class="ld-price-currency">$</span>
+              <span class="ld-price-digits" data-price-monthly="499" data-price-annual="416">499</span>
+              <div class="ld-price-suffix">
+                <span class="ld-price-period">/ month</span>
+                <span class="ld-price-sub muted" data-show="monthly">Per tenant · billed monthly</span>
+                <span class="ld-price-sub muted" data-show="annual" hidden>$4,990 / year · equivalent monthly</span>
+              </div>
+            </div>
+            <ul class="ld-price-features">
+              <li><span class="ld-check" aria-hidden="true"></span>Elevated ingestion &amp; retention targets</li>
+              <li><span class="ld-check" aria-hidden="true"></span>BYOK or pooled LLM routing hooks</li>
+              <li><span class="ld-check" aria-hidden="true"></span>Priority roadmap input on agents</li>
+              <li><span class="ld-check" aria-hidden="true"></span>Shared Slack / email within business hours</li>
+            </ul>
+            <a class="btn btn-primary btn-block ld-price-cta" href="{{ url_for('docs_page') }}">Contact sales</a>
+          </article>
+
+          <article class="ld-price-card ld-price-card-stripe">
+            <div class="ld-price-card-top">
+              <h3 class="ld-price-name">Enterprise</h3>
+              <p class="ld-price-blurb">Dedicated isolation, identity, and contractual SLAs.</p>
+            </div>
+            <div class="ld-price-amount-row ld-price-custom">
+              <span class="ld-price-custom-text">Custom</span>
+              <div class="ld-price-suffix">
+                <span class="ld-price-sub muted">VPC · SAML/OIDC · audit exports</span>
+              </div>
+            </div>
+            <ul class="ld-price-features">
+              <li><span class="ld-check" aria-hidden="true"></span>Dedicated vector partitions &amp; keys</li>
+              <li><span class="ld-check" aria-hidden="true"></span>Advanced SSO &amp; SCIM</li>
+              <li><span class="ld-check" aria-hidden="true"></span>HIPAA / SOC2 pathways (paperwork)</li>
+              <li><span class="ld-check" aria-hidden="true"></span>Named solutions engineer</li>
+            </ul>
+            <a class="btn btn-secondary btn-block ld-price-cta" href="{{ url_for('docs_page') }}">Request proposal</a>
+          </article>
+        </div>
+
+        <p class="ld-pricing-footnote muted">
+          Prices shown are illustrative for positioning. Wire <code>stripe_price_*</code> IDs when you enable billing —
+          toggling annual updates Growth display only (Starter stays free, Enterprise stays custom).
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ld-docs-strip">
+  <div class="ld-max ld-docs-box">
+    <div>
+      <h2>Documentation &amp; APIs</h2>
+      <p>REST endpoints for chat, documents, collections, users, marketplace catalog, and per-user agent preferences.</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('docs_page') }}">Open docs</a>
+  </div>
+</section>
+
+<footer class="ld-footer">
+  <div class="ld-max ld-footer-grid">
+    <span><strong>Nexura</strong> — multi‑tenant RAG &amp; agents.</span>
+    <span class="muted">© 2026 · Built for operator‑grade isolation.</span>
+  </div>
+</footer>
+
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var root = document.querySelector("[data-pricing-root]");
+  if (!root) return;
+
+  function apply(period) {
+    root.setAttribute("data-period", period);
+    root.querySelectorAll("[data-billing-trigger]").forEach(function (btn) {
+      var on = btn.getAttribute("data-billing-trigger") === period;
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.classList.toggle("is-active", on);
+    });
+    root.querySelectorAll("[data-show]").forEach(function (el) {
+      var modes = (el.getAttribute("data-show") || "").trim().split(/\s+/);
+      el.hidden = modes.indexOf(period) === -1;
+    });
+    var digits = root.querySelector("[data-price-monthly]");
+    if (digits && period === "annual") {
+      digits.textContent = digits.getAttribute("data-price-annual") || digits.textContent;
+    } else if (digits && period === "monthly") {
+      digits.textContent = digits.getAttribute("data-price-monthly") || digits.textContent;
+    }
+  }
+
+  root.querySelectorAll("[data-billing-trigger]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      apply(btn.getAttribute("data-billing-trigger") || "monthly");
+    });
+    if (btn.getAttribute("data-billing-trigger") === "monthly") btn.classList.add("is-active");
+  });
+  apply("monthly");
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,257 @@
+/* Long-form documentation (/docs) */
+
+.page-docs {
+  background: var(--mist);
+  color: var(--ink);
+}
+
+.docs-layout {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.docs-page-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.85rem, 3vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.35rem;
+}
+
+.docs-lead {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+  max-width: 42rem;
+}
+
+.docs-meta {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-bottom: 2rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.docs-meta code {
+  font-size: 0.84em;
+}
+
+.docs-toc {
+  position: sticky;
+  top: 4.5rem;
+  align-self: start;
+}
+
+.docs-toc-inner {
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-size: 0.86rem;
+}
+
+.docs-toc-inner strong {
+  display: block;
+  margin-bottom: 0.65rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.docs-toc-inner a {
+  display: block;
+  padding: 0.25rem 0;
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-weight: 550;
+}
+
+.docs-toc-inner a:hover {
+  color: var(--accent);
+}
+
+.docs-grid {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 880px) {
+  .docs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-toc {
+    position: static;
+  }
+}
+
+.docs-prose {
+  font-size: 0.97rem;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.docs-prose > *:first-child {
+  margin-top: 0;
+}
+
+.docs-prose h1 {
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 2.25rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.docs-prose h1:first-child {
+  margin-top: 0;
+}
+
+.docs-prose h2 {
+  font-family: var(--font-display);
+  font-size: 1.28rem;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 2rem 0 0.65rem;
+  scroll-margin-top: 5rem;
+}
+
+.docs-prose h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 1.35rem 0 0.45rem;
+}
+
+.docs-prose h4 {
+  font-size: 0.98rem;
+  font-weight: 650;
+  margin: 1rem 0 0.35rem;
+}
+
+.docs-prose p {
+  margin: 0.65rem 0;
+}
+
+.docs-prose ul,
+.docs-prose ol {
+  margin: 0.65rem 0;
+  padding-left: 1.35rem;
+}
+
+.docs-prose li + li {
+  margin-top: 0.35rem;
+}
+
+.docs-prose hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 2rem 0;
+}
+
+.docs-prose a {
+  font-weight: 550;
+}
+
+.docs-prose code {
+  font-size: 0.88em;
+  padding: 0.12rem 0.38rem;
+  border-radius: var(--radius-xs);
+  background: var(--mist-deep);
+  color: var(--ink);
+}
+
+.docs-prose pre {
+  margin: 1rem 0;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow-x: auto;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  border: 1px solid #1e293b;
+}
+
+.docs-prose pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.docs-prose th,
+.docs-prose td {
+  border: 1px solid var(--line);
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.docs-prose th {
+  background: var(--mist-deep);
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.docs-prose blockquote {
+  margin: 1rem 0;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
+.docs-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.75rem;
+}
+
+.docs-divider {
+  margin: 3rem 0 2rem;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+.docs-error {
+  padding: 1.25rem;
+  border-radius: var(--radius-sm);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.docs-fallback {
+  margin: 0.75rem 0 0;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: min(70vh, 42rem);
+}
+

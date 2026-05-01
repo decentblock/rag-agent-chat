@@ -4,8 +4,8 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
-from config import  SEARCH_K,CHROMA_DB_DIR,DEFAULT_COLLECTION_NAME
 from clients import get_embeddings, get_llm
+from config import CHROMA_DB_DIR, DEFAULT_COLLECTION_NAME, SEARCH_K
 from memory_store import get_memory
 
 
@@ -147,6 +147,64 @@ def build_rag_chain(llm, retriever, memory):
     return chain
 
 
+def merged_similarity_documents(chroma_collection_names: list[str], question: str):
+    """Retrieve across tenant-scoped physical Chroma collections (bounded).
+    Empty collection list → no documents."""
+    if not chroma_collection_names:
+        return []
+    embeddings = get_embeddings()
+    persist = get_chroma_db_path()
+    acc = []
+    per = max(SEARCH_K, 4)
+    for name in chroma_collection_names:
+        vs = Chroma(
+            collection_name=name,
+            persist_directory=persist,
+            embedding_function=embeddings,
+        )
+        acc.extend(vs.similarity_search(question, k=per))
+    seen: set[tuple[str, str]] = set()
+    uniq = []
+    for d in acc:
+        key = ((d.page_content or "")[:120], str(d.metadata.get("source", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(d)
+    return uniq[: max(SEARCH_K * 2, 8)]
+
+
+def merged_search_runnable(chroma_collection_names: list[str]):
+    return RunnableLambda(lambda q: merged_similarity_documents(chroma_collection_names, q))
+
+
+def get_rag_chain_for_tenant(chroma_collection_names: list[str], tenant_id: str, session_id: str):
+    llm = get_llm()
+    memory = get_memory(tenant_id, session_id)
+    prompt = make_rag_prompt()
+    extractor = RunnableLambda(
+        lambda x: x["question"]
+        if isinstance(x, dict) and "question" in x
+        else (x if isinstance(x, str) else str(x))
+    )
+    search_branch = merged_search_runnable(chroma_collection_names)
+    guidelines_lambda = extractor | search_branch | RunnableLambda(format_doc)
+    chain = (
+        {
+            "guidelines": guidelines_lambda,
+            "question": RunnablePassthrough(),
+            "history": RunnableLambda(
+                lambda x: memory.load_memory_variables({}).get("history", [])
+                if isinstance(x, dict)
+                else []
+            ),
+        }
+        | prompt
+        | llm
+    )
+    return chain
+
+
 def build_rag_chain_with_memory(llm, retriever, memory):
     prompt = make_rag_prompt()
 
@@ -175,8 +233,8 @@ def build_rag_chain_with_memory(llm, retriever, memory):
     return chain
 
 
-def run_chain_with_memory(chain, question, session_id):
-    memory = get_memory(session_id=session_id)
+def run_chain_with_memory_tenant(chain, question: str, tenant_id: str, session_id: str):
+    memory = get_memory(tenant_id, session_id)
 
     memory_vars = memory.load_memory_variables({})
     history = memory_vars.get("history", [])
@@ -194,6 +252,11 @@ def run_chain_with_memory(chain, question, session_id):
     return result
 
 
+def run_chain_with_memory(chain, question, session_id):
+    """Legacy single-tenant path (pre-bootstrap DB)."""
+    return run_chain_with_memory_tenant(chain, question, "legacy", session_id)
+
+
 
 
 def get_retriever(module=None):
@@ -207,7 +270,7 @@ def get_retriever(module=None):
 def get_rag_chain(module=None):
     llm = get_llm()
     retriever = get_retriever(module)
-    memory = get_memory("default-session")
+    memory = get_memory("legacy", "default-session")
 
     rag_chain = build_rag_chain_with_memory(llm, retriever, memory)
     return rag_chain

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Nexura{% endblock %}
+{% block page_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+{% endblock %}
+{% block body_class %}page-login{% endblock %}
+{% block body %}
+<div class="login-shell">
+  <div class="login-card card-elevated">
+    <p style="margin:0 0 1rem;"><a href="{{ url_for('index') }}" style="color:var(--muted);font-size:0.88rem;text-decoration:none;">← Nexura home</a></p>
+    <div class="login-brand">
+      <span class="logo-mark" aria-hidden="true">N</span>
+      <div>
+        <h1 class="login-title">Console sign‑in</h1>
+        <p class="login-sub">Manage tenant documents, agents, and grounded chat.</p>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="banner banner-error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    {% if registration_registered %}
+    <div class="banner banner-success" role="status">Organisation created. Sign in below with your admin account.</div>
+    {% endif %}
+
+    <form class="login-form" method="post" action="{{ url_for('login_submit') }}" autocomplete="on">
+      <input type="hidden" name="next" value="{{ next_url }}" />
+
+      <label class="field">
+        <span class="field-label">Organisation (tenant slug)</span>
+        <input type="text" name="tenant_slug" required autocomplete="organization"
+               class="input" value="{{ default_tenant_slug }}" placeholder="default" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Username</span>
+        <input type="text" name="username" required autofocus autocomplete="username"
+               class="input" placeholder="admin" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Password</span>
+        <input type="password" name="password" required autocomplete="current-password"
+               class="input" placeholder="••••••••" />
+      </label>
+
+      <label class="checkbox-row">
+        <input type="checkbox" name="remember" />
+        <span>Stay signed in for two weeks</span>
+      </label>
+
+      <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+    </form>
+
+    {% if registration_enabled %}
+    <p style="margin-top:1rem;text-align:center;font-size:0.9rem;">
+      <a href="{{ url_for('register_page') }}">Create a new organisation</a>
+    </p>
+    {% endif %}
+
+    <p class="login-hint muted">
+      First launch seeds tenant <code>{{ default_tenant_slug }}</code> with admin
+      <code>{{ admin_bootstrap_username }}</code> — password from
+      <code>ADMIN_BOOTSTRAP_PASSWORD</code> (default <strong>changeme</strong>).
+      Use Postgres via <code>DATABASE_URL</code> in production.
+    </p>
+  </div>
+</div>
+{% endblock %}

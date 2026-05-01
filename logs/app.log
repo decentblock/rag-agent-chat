@@ -1,0 +1,641 @@
+2026-05-02 01:47:04,240 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 01:47:55,727 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 01:47:59,543 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 01:49:12,648 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 01:49:14,952 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 01:50:10,089 | INFO | rag_app | Starting chat
+2026-05-02 01:50:10,089 | INFO | rag_app | User id admin chat message
+2026-05-02 01:50:11,312 | ERROR | rag_app | chat failed
+Traceback (most recent call last):
+  File "/Users/dtrip3/cursor/latest_rag_application/app.py", line 111, in chat
+    raw = get_answer(chat_message, user_id)
+  File "/Users/dtrip3/cursor/latest_rag_application/answer_flow.py", line 7, in get_answer
+    return run_rag_only(question, session_id)
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_flow.py", line 18, in run_rag_only
+    retriever=get_retriever(module)
+  File "/Users/dtrip3/cursor/latest_rag_application/rag.py", line 201, in get_retriever
+    vectorstore = build_vectorstore_from_DB(embeddings)
+  File "/Users/dtrip3/cursor/latest_rag_application/rag.py", line 52, in build_vectorstore_from_DB
+    return Chroma(
+        collection_name=collection_name,
+        persist_directory=get_chroma_db_path(),
+        embedding_function=embedding_function,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_core/_api/deprecation.py", line 238, in warn_if_direct_instance
+    return wrapped(self, *args, **kwargs)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 128, in __init__
+    self._collection = self._client.get_or_create_collection(
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        name=collection_name,
+        ^^^^^^^^^^^^^^^^^^^^^
+        embedding_function=None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+        metadata=collection_metadata,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/chromadb/api/client.py", line 361, in get_or_create_collection
+    model = self._server.get_or_create_collection(
+        name=name,
+    ...<4 lines>...
+        configuration=configuration,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/chromadb/api/rust.py", line 313, in get_or_create_collection
+    return self.create_collection(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        name, schema, configuration, metadata, True, tenant, database
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/chromadb/api/rust.py", line 244, in create_collection
+    collection = self.bindings.create_collection(
+        name,
+    ...<5 lines>...
+        database,
+    )
+chromadb.errors.InvalidArgumentError: Validation error: name: Expected a name containing 3-512 characters from [a-zA-Z0-9._-], starting and ending with a character in [a-zA-Z0-9]. Got: 
+2026-05-02 02:05:33,765 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 02:18:33,483 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 02:18:35,690 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 02:26:16,377 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 02:26:26,210 | WARNING | rag_app | Default UI password in use; set RAG_UI_USERNAME and RAG_UI_PASSWORD for production.
+2026-05-02 02:38:07,026 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:38:09,298 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:43:03,657 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:43:43,442 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:47:45,023 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:47:59,991 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:54:03,034 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:54:11,808 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:54:16,127 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:55:24,283 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:55:27,640 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:57:51,252 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:59:14,319 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 02:59:26,313 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:00:41,586 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:00:44,739 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:02:12,548 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:04:00,961 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:04:18,129 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:04:29,115 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:04:33,575 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:04:42,488 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:04:49,050 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:06:19,989 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:12:31,334 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:12:34,733 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:21:09,112 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:21:13,129 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:24:30,826 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:26:05,756 | ERROR | rag_app | upload failed
+Traceback (most recent call last):
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 250, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpcore/_sync/connection_pool.py", line 256, in handle_request
+    raise exc from None
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpcore/_sync/connection_pool.py", line 236, in handle_request
+    response = connection.handle_request(
+        pool_request.request
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    raise exc
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpcore/_sync/connection.py", line 78, in handle_request
+    stream = self._connect(request)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpcore/_sync/connection.py", line 156, in _connect
+    stream = stream.start_tls(**kwargs)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpcore/_backends/sync.py", line 154, in start_tls
+    with map_exceptions(exc_map):
+         ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1019, in request
+    response = self._send_request(
+        request,
+        stream=stream or self._should_stream_response_body(request=request),
+        **kwargs,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_client.py", line 400, in _send_request
+    return self._send_with_auth_retry(request, stream=stream, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_client.py", line 378, in _send_with_auth_retry
+    response = super()._send_request(request, stream=stream, **kwargs)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 947, in _send_request
+    return self._client.send(request, stream=stream, **kwargs)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_client.py", line 914, in send
+    response = self._send_handling_auth(
+        request,
+    ...<2 lines>...
+        history=[],
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+    response = self._send_handling_redirects(
+        request,
+        follow_redirects=follow_redirects,
+        history=history,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_client.py", line 1014, in _send_single_request
+    response = transport.handle_request(request)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 249, in handle_request
+    with map_httpcore_exceptions():
+         ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/dtrip3/cursor/latest_rag_application/app.py", line 769, in upload_document
+    result = ingest_document_file(
+        file_path=file_path,
+    ...<3 lines>...
+        module=module,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 80, in ingest_document_file
+    chunk_count = insert_into_chroma(chunks, physical)
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 49, in insert_into_chroma
+    vectordb = Chroma.from_documents(
+        documents=chunks,
+    ...<2 lines>...
+        persist_directory=CHROMA_DB_FILE_PATH,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 887, in from_documents
+    return cls.from_texts(
+           ~~~~~~~~~~~~~~^
+        texts=texts,
+        ^^^^^^^^^^^^
+    ...<8 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 843, in from_texts
+    chroma_collection.add_texts(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts=batch[3] if batch[3] else [],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        metadatas=batch[2] if batch[2] else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ids=batch[0],
+        ^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 277, in add_texts
+    embeddings = self._embedding_function.embed_documents(texts)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 751, in embed_documents
+    return self._get_len_safe_embeddings(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts, engine=engine, chunk_size=chunk_size, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 618, in _get_len_safe_embeddings
+    response = self.client.create(input=batch_tokens, **client_kwargs)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/resources/embeddings.py", line 136, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/embeddings",
+        ^^^^^^^^^^^^^^
+    ...<8 lines>...
+        cast_to=CreateEmbeddingResponse,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1314, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1054, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+2026-05-02 03:26:50,060 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:26:53,731 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:27:22,056 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:27:51,717 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:27:54,147 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:28:10,617 | ERROR | rag_app | upload failed
+Traceback (most recent call last):
+  File "/Users/dtrip3/cursor/latest_rag_application/app.py", line 769, in upload_document
+    result = ingest_document_file(
+        file_path=file_path,
+    ...<3 lines>...
+        module=module,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 80, in ingest_document_file
+    chunk_count = insert_into_chroma(chunks, physical)
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 49, in insert_into_chroma
+    vectordb = Chroma.from_documents(
+        documents=chunks,
+    ...<2 lines>...
+        persist_directory=CHROMA_DB_FILE_PATH,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 887, in from_documents
+    return cls.from_texts(
+           ~~~~~~~~~~~~~~^
+        texts=texts,
+        ^^^^^^^^^^^^
+    ...<8 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 843, in from_texts
+    chroma_collection.add_texts(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts=batch[3] if batch[3] else [],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        metadatas=batch[2] if batch[2] else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ids=batch[0],
+        ^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 277, in add_texts
+    embeddings = self._embedding_function.embed_documents(texts)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 751, in embed_documents
+    return self._get_len_safe_embeddings(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts, engine=engine, chunk_size=chunk_size, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 618, in _get_len_safe_embeddings
+    response = self.client.create(input=batch_tokens, **client_kwargs)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/resources/embeddings.py", line 136, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/embeddings",
+        ^^^^^^^^^^^^^^
+    ...<8 lines>...
+        cast_to=CreateEmbeddingResponse,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1314, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1087, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: <html>
+<head>
+<title>Web Page Blocked</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<META HTTP-EQUIV="PRAGMA" CONTENT="NO-CACHE">
+<meta name="viewport" content="initial-scale=1.0">
+<style>
+  #content {
+    border:3px solid#aaa;
+    background-color:#fff;
+    margin:1.5em;
+    padding:1.5em;
+    font-family:Tahoma,Helvetica,Arial,sans-serif;
+    font-size:1em; 
+    width: 1000px;   
+    text-align: left; 
+  }
+  h1 {
+    font-size:1.3em;
+    font-weight:bold;
+    color:#196390;
+  }
+  b {
+    font-weight:normal;
+    color:#196390;
+  }
+</style>
+</head>
+<body bgcolor="#e7e8e9">
+<center>  
+<div id="content">
+<h1>This web page is blocked.</h1>
+<p>Access to this web page has been blocked in accordance with Nike policy. If you believe this is in error, please click the link below and fill out the form to request review of this site.</p>
+<hr>
+<p><b>Your username is: </b> durgesh.tripathi@nike.com</p>
+<p><b>You tried to visit: </b> api.openai.com/v1/embeddings</p>
+<p><b>This page is categorized as: </b> artificial-intelligence</p>
+<hr>
+<pre>                                 
+                                                                                                    
+                 ``                                                                        ```.`    
+               `+/                                                                 ``.-/+o+:-.      
+             `/mo                                                          ``.-:+syhdhs/-`          
+            -hMd                                                    `..:+oyhmNNmds/-`               
+          `oNMM/                                            ``.-/oyhdmMMMMNdy+:.                    
+         .hMMMM-                                     `.-/+shdmNMMMMMMNdy+:.                         
+        :mMMMMM+                             `.-:+sydmNMMMMMMMMMNmho:.`                             
+       :NMMMMMMN:                    `.-:/oyhmmNMMMMMMMMMMMNmho:.`                                  
+      .NMMMMMMMMNy:`          `.-/oshdmNMMMMMMMMMMMMMMMmhs/-`                                       
+      hMMMMMMMMMMMMmhysooosyhdmNMMMMMMMMMMMMMMMMMMmds/-`                                            
+     .MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNdy+-.`                                                
+     -MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNdy+-.`                                                     
+     `NMMMMMMMMMMMMMMMMMMMMMMMMMMMMMmyo:.`                                                          
+      /NMMMMMMMMMMMMMMMMMMMMMMMmho:.`                                                               
+       .yNMMMMMMMMMMMMMMMMmhs/.`                                                                    
+         ./shdmNNmmdhyo/-``                                                                         
+              `````                 
+
+</pre>
+<p><a href="https://niketech.service-now.com/nikenow?id=sc_cat_item&table=sc_cat_item&sys_id=e5b1ef524f9bd2000b86ecee0210c7f7">Click here to request a review of this site.</a></p>
+</div>
+</body>
+<script> 
+var cat = "artificial-intelligence";
+			switch(cat)
+			{
+			case 'NIKE_URL_SURVEY_TOOLS':
+			window.location.replace("https://worksmarter.nike.com/apps/survey-tools");
+			break;
+			}
+</script> 
+</html>
+2026-05-02 03:28:19,584 | ERROR | rag_app | upload failed
+Traceback (most recent call last):
+  File "/Users/dtrip3/cursor/latest_rag_application/app.py", line 769, in upload_document
+    result = ingest_document_file(
+        file_path=file_path,
+    ...<3 lines>...
+        module=module,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 80, in ingest_document_file
+    chunk_count = insert_into_chroma(chunks, physical)
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 49, in insert_into_chroma
+    vectordb = Chroma.from_documents(
+        documents=chunks,
+    ...<2 lines>...
+        persist_directory=CHROMA_DB_FILE_PATH,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 887, in from_documents
+    return cls.from_texts(
+           ~~~~~~~~~~~~~~^
+        texts=texts,
+        ^^^^^^^^^^^^
+    ...<8 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 843, in from_texts
+    chroma_collection.add_texts(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts=batch[3] if batch[3] else [],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        metadatas=batch[2] if batch[2] else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ids=batch[0],
+        ^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 277, in add_texts
+    embeddings = self._embedding_function.embed_documents(texts)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 751, in embed_documents
+    return self._get_len_safe_embeddings(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts, engine=engine, chunk_size=chunk_size, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 618, in _get_len_safe_embeddings
+    response = self.client.create(input=batch_tokens, **client_kwargs)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/resources/embeddings.py", line 136, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/embeddings",
+        ^^^^^^^^^^^^^^
+    ...<8 lines>...
+        cast_to=CreateEmbeddingResponse,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1314, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1087, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: <html>
+<head>
+<title>Web Page Blocked</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<META HTTP-EQUIV="PRAGMA" CONTENT="NO-CACHE">
+<meta name="viewport" content="initial-scale=1.0">
+<style>
+  #content {
+    border:3px solid#aaa;
+    background-color:#fff;
+    margin:1.5em;
+    padding:1.5em;
+    font-family:Tahoma,Helvetica,Arial,sans-serif;
+    font-size:1em; 
+    width: 1000px;   
+    text-align: left; 
+  }
+  h1 {
+    font-size:1.3em;
+    font-weight:bold;
+    color:#196390;
+  }
+  b {
+    font-weight:normal;
+    color:#196390;
+  }
+</style>
+</head>
+<body bgcolor="#e7e8e9">
+<center>  
+<div id="content">
+<h1>This web page is blocked.</h1>
+<p>Access to this web page has been blocked in accordance with Nike policy. If you believe this is in error, please click the link below and fill out the form to request review of this site.</p>
+<hr>
+<p><b>Your username is: </b> durgesh.tripathi@nike.com</p>
+<p><b>You tried to visit: </b> api.openai.com/v1/embeddings</p>
+<p><b>This page is categorized as: </b> artificial-intelligence</p>
+<hr>
+<pre>                                 
+                                                                                                    
+                 ``                                                                        ```.`    
+               `+/                                                                 ``.-/+o+:-.      
+             `/mo                                                          ``.-:+syhdhs/-`          
+            -hMd                                                    `..:+oyhmNNmds/-`               
+          `oNMM/                                            ``.-/oyhdmMMMMNdy+:.                    
+         .hMMMM-                                     `.-/+shdmNMMMMMMNdy+:.                         
+        :mMMMMM+                             `.-:+sydmNMMMMMMMMMNmho:.`                             
+       :NMMMMMMN:                    `.-:/oyhmmNMMMMMMMMMMMNmho:.`                                  
+      .NMMMMMMMMNy:`          `.-/oshdmNMMMMMMMMMMMMMMMmhs/-`                                       
+      hMMMMMMMMMMMMmhysooosyhdmNMMMMMMMMMMMMMMMMMMmds/-`                                            
+     .MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNdy+-.`                                                
+     -MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNdy+-.`                                                     
+     `NMMMMMMMMMMMMMMMMMMMMMMMMMMMMMmyo:.`                                                          
+      /NMMMMMMMMMMMMMMMMMMMMMMMmho:.`                                                               
+       .yNMMMMMMMMMMMMMMMMmhs/.`                                                                    
+         ./shdmNNmmdhyo/-``                                                                         
+              `````                 
+
+</pre>
+<p><a href="https://niketech.service-now.com/nikenow?id=sc_cat_item&table=sc_cat_item&sys_id=e5b1ef524f9bd2000b86ecee0210c7f7">Click here to request a review of this site.</a></p>
+</div>
+</body>
+<script> 
+var cat = "artificial-intelligence";
+			switch(cat)
+			{
+			case 'NIKE_URL_SURVEY_TOOLS':
+			window.location.replace("https://worksmarter.nike.com/apps/survey-tools");
+			break;
+			}
+</script> 
+</html>
+2026-05-02 03:28:28,711 | ERROR | rag_app | upload failed
+Traceback (most recent call last):
+  File "/Users/dtrip3/cursor/latest_rag_application/app.py", line 769, in upload_document
+    result = ingest_document_file(
+        file_path=file_path,
+    ...<3 lines>...
+        module=module,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 80, in ingest_document_file
+    chunk_count = insert_into_chroma(chunks, physical)
+  File "/Users/dtrip3/cursor/latest_rag_application/rag_ingestion.py", line 49, in insert_into_chroma
+    vectordb = Chroma.from_documents(
+        documents=chunks,
+    ...<2 lines>...
+        persist_directory=CHROMA_DB_FILE_PATH,
+    )
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 887, in from_documents
+    return cls.from_texts(
+           ~~~~~~~~~~~~~~^
+        texts=texts,
+        ^^^^^^^^^^^^
+    ...<8 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 843, in from_texts
+    chroma_collection.add_texts(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts=batch[3] if batch[3] else [],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        metadatas=batch[2] if batch[2] else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ids=batch[0],
+        ^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_community/vectorstores/chroma.py", line 277, in add_texts
+    embeddings = self._embedding_function.embed_documents(texts)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 751, in embed_documents
+    return self._get_len_safe_embeddings(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        texts, engine=engine, chunk_size=chunk_size, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/langchain_openai/embeddings/base.py", line 618, in _get_len_safe_embeddings
+    response = self.client.create(input=batch_tokens, **client_kwargs)
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/resources/embeddings.py", line 136, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/embeddings",
+        ^^^^^^^^^^^^^^
+    ...<8 lines>...
+        cast_to=CreateEmbeddingResponse,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1314, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dtrip3/cursor/latest_rag_application/venv/lib/python3.13/site-packages/openai/_base_client.py", line 1087, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: <html>
+<head>
+<title>Web Page Blocked</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<META HTTP-EQUIV="PRAGMA" CONTENT="NO-CACHE">
+<meta name="viewport" content="initial-scale=1.0">
+<style>
+  #content {
+    border:3px solid#aaa;
+    background-color:#fff;
+    margin:1.5em;
+    padding:1.5em;
+    font-family:Tahoma,Helvetica,Arial,sans-serif;
+    font-size:1em; 
+    width: 1000px;   
+    text-align: left; 
+  }
+  h1 {
+    font-size:1.3em;
+    font-weight:bold;
+    color:#196390;
+  }
+  b {
+    font-weight:normal;
+    color:#196390;
+  }
+</style>
+</head>
+<body bgcolor="#e7e8e9">
+<center>  
+<div id="content">
+<h1>This web page is blocked.</h1>
+<p>Access to this web page has been blocked in accordance with Nike policy. If you believe this is in error, please click the link below and fill out the form to request review of this site.</p>
+<hr>
+<p><b>Your username is: </b> durgesh.tripathi@nike.com</p>
+<p><b>You tried to visit: </b> api.openai.com/v1/embeddings</p>
+<p><b>This page is categorized as: </b> artificial-intelligence</p>
+<hr>
+<pre>                                 
+                                                                                                    
+                 ``                                                                        ```.`    
+               `+/                                                                 ``.-/+o+:-.      
+             `/mo                                                          ``.-:+syhdhs/-`          
+            -hMd                                                    `..:+oyhmNNmds/-`               
+          `oNMM/                                            ``.-/oyhdmMMMMNdy+:.                    
+         .hMMMM-                                     `.-/+shdmNMMMMMMNdy+:.                         
+        :mMMMMM+                             `.-:+sydmNMMMMMMMMMNmho:.`                             
+       :NMMMMMMN:                    `.-:/oyhmmNMMMMMMMMMMMNmho:.`                                  
+      .NMMMMMMMMNy:`          `.-/oshdmNMMMMMMMMMMMMMMMmhs/-`                                       
+      hMMMMMMMMMMMMmhysooosyhdmNMMMMMMMMMMMMMMMMMMmds/-`                                            
+     .MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNdy+-.`                                                
+     -MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNdy+-.`                                                     
+     `NMMMMMMMMMMMMMMMMMMMMMMMMMMMMMmyo:.`                                                          
+      /NMMMMMMMMMMMMMMMMMMMMMMMmho:.`                                                               
+       .yNMMMMMMMMMMMMMMMMmhs/.`                                                                    
+         ./shdmNNmmdhyo/-``                                                                         
+              `````                 
+
+</pre>
+<p><a href="https://niketech.service-now.com/nikenow?id=sc_cat_item&table=sc_cat_item&sys_id=e5b1ef524f9bd2000b86ecee0210c7f7">Click here to request a review of this site.</a></p>
+</div>
+</body>
+<script> 
+var cat = "artificial-intelligence";
+			switch(cat)
+			{
+			case 'NIKE_URL_SURVEY_TOOLS':
+			window.location.replace("https://worksmarter.nike.com/apps/survey-tools");
+			break;
+			}
+</script> 
+</html>
+2026-05-02 03:29:08,696 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:30:52,330 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:30:55,353 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:31:18,388 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
+2026-05-02 03:31:20,943 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.
