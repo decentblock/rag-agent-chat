@@ -23,6 +23,8 @@ This document describes the **latest_rag_application** codebase: architecture, c
 15. [Marketplace catalog](#15-marketplace-catalog)  
 16. [User agent preferences](#16-user-agent-preferences)  
 17. [HTTP API reference](#17-http-api-reference)  
+    - [§17.16 — Platform super APIs](#1716-platform-super-apis-apisuper)  
+    - [Marketplace agents — operator summary](#marketplace-agents--operator-summary-super-admin)  
 18. [HTML / UI routes](#18-html--ui-routes)  
 19. [Static frontend](#19-static-frontend)  
 20. [Logging](#20-logging)  
@@ -585,6 +587,24 @@ All routes: **session** cookie · **`superuser_required`** ( **`403`** if not pl
 | `PATCH` | `/api/super/users/<user_id>` | `{ "is_active"?: boolean, "password"?: string }` — password minimum **8** characters (same as self-service signup); hashes with Werkzeug (`generate_password_hash`). Cannot disable **your own** account (**`400`**). | `{ "user": { id, tenant_id, username, is_active, password_updated?: boolean } }` — **`password_updated`** is **`true`** when **`password`** was present in the body |
 
 Implementation: **`services/super_org_admin.py`**. Console page **`/super/organisations`** uses **`static/js/super_orgs.js`**.
+
+#### Marketplace agents — operator summary (super admin)
+
+Use this when explaining **how marketplace rows relate to live chat** and **what you can customise per organisation** from **`/super/organisations`**.
+
+1. **Catalog vs runnable code** — **`agent_catalog.MARKETPLACE_AGENTS`** drives listing copy, categories, and **`config_fields`** for the UI. **`GET /api/marketplace/agents`** merges that with the **registry** (see **§15**): each row is **`installed`** only when **`available`** is true **and** an **`Agent`** with the same **`agent_id`** was registered at startup (**`agents/bootstrap.py`** → **`registry.register`**).
+
+2. **How tenants use agents** — In-app chat picks **`agent_id`** (and merges **`config`**) from **`UserAgentPreference`** unless the request overrides (**§16**, **`PUT /api/v1/me/agent-preference`**). **Embed** widgets default from **`ApiKey.default_agent_id`** and **`agent_config_json`**, merged with per-request JSON. Execution always goes through **`services/chat_execution.run_chat_turn`** → **`registry.invoke`** after **`plan_enforcement.agent_allowed_on_plan`** rejects disallowed ids.
+
+3. **What you control as platform operator**  
+   - **Plan** (**`plan_slug`** on the tenant) — each tier’s **`allowed_agent_ids`** in **`plans_catalog.PLANS`** is either a **finite list** (e.g. Starter often **`["rag_document_qa"]`**) or **`null`** meaning **all installed** marketplace agents for that tier (**§24**).  
+   - **Per-org agent allowlist** — **`PATCH`** body field **`allowed_agent_ids`** persists **`tenants.allowed_agent_ids_json`**. **`resolved_allowed_agent_ids`** (**`services/plan_enforcement.py`**) combines plan + tenant rules: finite plan list ⇒ **intersection** with the tenant list; plan **`null`** ⇒ tenant list is the whitelist (**empty array ⇒ no agents**). **`null`** in the PATCH clears the tenant override so the plan alone applies. The **Agents** card on **`/super/organisations`** mirrors this; rows are **disabled** when the agent is not allowed by the **current** plan or not **installed** on this server.
+
+4. **Personalisation (beyond the allowlist)** — **Per-user**: saved **`agent_id`** + **`config`** (**§16**). **Per embed key**: **`default_agent_id`** + **`agent_config_json`**. There is **no** dedicated tenant-wide “default agent / default config” column today; org-level shaping is **which agents are allowed** plus downstream user/key preferences.
+
+5. **Shipping a new agent** — Follow **§22 (Extension points), item 1**: implement **`Agent`**, **`registry.register`** in **`agents/bootstrap.py`**, add a **`MARKETPLACE_AGENTS`** entry with the same **`agent_id`** and **`available: True`**. Optionally add **`available: False`** rows as roadmap cards without code. If **Starter** (or any tier with a finite list) should expose the new agent, append its **`agent_id`** to that plan’s **`allowed_agent_ids`** in **`plans_catalog.py`**.
+
+Cross-references: marketplace metadata **§15**, preferences **§16**, enforcement details **§24**, **`list_marketplace_payload`** / **`validate_agent_choice`** in **`agent_catalog.py`**.
 
 ---
 

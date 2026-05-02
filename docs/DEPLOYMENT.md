@@ -415,4 +415,4 @@ Ensure **one writable persistence layer** per tenant data path; read-only contai
 
 ---
 
-For architecture and every HTTP route, see **`docs/TECHNICAL.md`** (superusers: **`/super/technical`**). Cross-tenant administration is **`/super/organisations`**. Product overview and this deployment guide render together at **`/super/guides`** (sources **`docs/FEATURES_SUMMARY.md`**, **`docs/DEPLOYMENT.md`**). Live API explorer: **`/docs`** (Swagger).
+For architecture and every HTTP route, see **`docs/TECHNICAL.md`** (superusers: **`/super/technical`**). Cross-tenant administration is **`/super/organisations`**. Product overview and this deployment guide render together at **`/super/guides`** (sources **`docs/FEATURES_SUMMARY.md`** — including marketplace agents for platform operators — **`docs/DEPLOYMENT.md`**). Live API explorer: **`/docs`** (Swagger).
