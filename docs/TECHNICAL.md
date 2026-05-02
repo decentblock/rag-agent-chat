@@ -675,7 +675,7 @@ Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), 
 
 ## 23. Deployment (companion guide)
 
-Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, and optional containers are maintained in **`docs/DEPLOYMENT.md`**, rendered with **`docs/FEATURES_SUMMARY.md`** for platform superusers at **`/super/guides`**. The **HTTP API** is **Swagger UI** on public **`/docs`** (spec **`/api/openapi.json`**). This **`TECHNICAL.md`** file is served at **`/super/technical`**. Organisation administration UI lives at **`/super/organisations`**; REST endpoints are §17.16.
+Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, optional containers, and a **[DigitalOcean (Droplet) walkthrough](DEPLOYMENT.md#digitalocean-droplet-deployment)** are maintained in **`docs/DEPLOYMENT.md`**, rendered with **`docs/FEATURES_SUMMARY.md`** for platform superusers at **`/super/guides`**. The **HTTP API** is **Swagger UI** on public **`/docs`** (spec **`/api/openapi.json`**). This **`TECHNICAL.md`** file is served at **`/super/technical`**. Organisation administration UI lives at **`/super/organisations`**; REST endpoints are §17.16.
 
 ---
 

@@ -37,7 +37,8 @@ This guide walks you from a clean machine to a running Nexura instance, then out
 14. [Step 12 — Backups](#step-12--backups-and-restores)  
 15. [Step 13 — Upgrades](#step-13--upgrades)  
 16. [Step 14 — Containers](#step-14--container-deployment-optional-pattern)  
-17. [Troubleshooting](#troubleshooting)  
+17. [DigitalOcean (Droplet) deployment](#digitalocean-droplet-deployment)  
+18. [Troubleshooting](#troubleshooting)  
 
 ---
 
@@ -398,6 +399,189 @@ Ensure **one writable persistence layer** per tenant data path; read-only contai
 
 ---
 
+## DigitalOcean (Droplet) deployment
+
+This section is tailored for **[DigitalOcean Droplets](https://www.digitalocean.com/products/droplets)** (Ubuntu LTS): persistent disk for **`chroma-db/`**, **`uploads/`**, and logs; **nginx + Let’s Encrypt**; **systemd**. It mirrors Steps 8–12 with DO-specific defaults. *(Platform superusers: this guide also renders under **Console → Product & deployment** at **`/super/guides`.)*
+
+### Before you provision
+
+| Approach | Notes |
+|----------|--------|
+| **Ubuntu Droplet + nginx + systemd** | **Recommended.** Matches Chroma + file uploads local paths (Steps 4, 12). Attach a **[Volume](https://www.digitalocean.com/products/block-storage)** (e.g. mount **`/var/lib/nexura`**) if the Droplet disk is small. |
+| **Droplet + [Managed PostgreSQL](https://www.digitalocean.com/products/managed-databases)** | **Recommended** instead of SQLite for production: backups and concurrency (**Step 6**). Use the **private** connection host from the Droplet’s VPC when possible; set **`DATABASE_URL`** (see **`config.py`** / **Step 5**). |
+| **DigitalOcean App Platform** | **Not recommended as-is:** deploys typically use an **ephemeral** filesystem — **Chroma**, **uploads**, and default **SQLite** can be reset on redeploy unless you redesign storage (object storage + code changes). Use a Droplet until then. |
+
+### 1 — Create Droplet, DNS, firewall
+
+1. **DigitalOcean → Droplets → Create** — Image **Ubuntu 24.04 LTS** (or 22.04). Plan **≥ 2 GB RAM** ( **4 GB** safer for embeddings + concurrency). Authenticate with **SSH keys**.  
+2. **DNS:** **A record** for your hostname (e.g. **`app.example.com`**) → Droplet public IPv4 (and **AAAA** if you use IPv6).  
+3. **Cloud firewall:** inbound **SSH 22** — restrict to **your IP(s)** where possible; inbound **HTTP 80** and **HTTPS 443** → everywhere (for HTTPS + ACME). **Do not** publish Gunicorn’s port; only **nginx** faces the internet.  
+
+### 2 — Optional Managed Postgres
+
+Create a PostgreSQL cluster in the **same region/VPC**, create database + user, copy the **URI** DigitalOcean shows. Typical **`DATABASE_URL`** (adjust user, password, host, port, DB name; **`pip install psycopg[binary]`** per **Step 6**):
+
+```text
+postgresql+psycopg://doadmin:PASSWORD@private-host.region.db.ondigitalocean.com:25060/defaultdb?sslmode=require
+```
+
+### 3 — Baseline packages and deploy user
+
+On the Droplet:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-venv python3-pip git nginx certbot python3-certbot-nginx
+
+sudo useradd -r -m -s /bin/bash nexura 2>/dev/null || true
+sudo mkdir -p /opt/nexura
+sudo chown nexura:nexura /opt/nexura
+
+sudo mkdir -p /etc/nexura
+sudo chmod 700 /etc/nexura
+```
+
+### 4 — Optional Volume for data
+
+Attach a Block Storage Volume, **[format and mount](https://docs.digitalocean.com/products/volumes/how-to/format-and-mount/)** e.g. **`/var/lib/nexura`**. Then:
+
+```bash
+sudo mkdir -p /var/lib/nexura/chroma-db /var/lib/nexura/uploads /var/lib/nexura/logs
+sudo chown -R nexura:nexura /var/lib/nexura
+```
+
+### 5 — Clone app and Python env
+
+Adjust **`git clone`** and paths to match your repo layout.
+
+```bash
+sudo -iu nexura
+cd /opt/nexura
+git clone https://github.com/YOUR_ORG/YOUR_REPO.git repo
+cd repo/latest_rag_application
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements-dev.txt
+pip install gunicorn "psycopg[binary]"
+mkdir -p logs chroma-db uploads
+exit
+```
+
+If **not** using a Volume for Chroma/logs/uploads, ensure **`nexura`** can write **`chroma-db/`**, **`uploads/`**, **`logs/`** under **`latest_rag_application/`**.
+
+### 6 — Secrets and environment (`/etc/nexura/environment`)
+
+```bash
+sudo tee /etc/nexura/environment >/dev/null <<'EOF'
+OPENAI_API_KEY=sk-your-key-here
+SESSION_SECRET=REPLACE_WITH_openssl_rand_hex32_or_python_secrets_token_hex
+ADMIN_BOOTSTRAP_USERNAME=admin
+ADMIN_BOOTSTRAP_PASSWORD=REPLACE_WITH_STRONG_PASSWORD
+VERIFY_SSL=true
+EMBED_CORS_ORIGINS=https://app.example.com
+# Optional — only effective on first seed; then set false / remove line
+BOOTSTRAP_SUPERUSER=true
+# Uncomment if using Managed Postgres (see §2 above)
+# DATABASE_URL=postgresql+psycopg://...
+# Uncomment if using Volume paths
+# CHROMA_DB_FILE_PATH=/var/lib/nexura/chroma-db
+# LOG_DIR=/var/lib/nexura/logs
+EOF
+sudo chmod 600 /etc/nexura/environment
+sudo chown root:root /etc/nexura/environment
+```
+
+Edit the file (**`sudo nano /etc/nexura/environment`**): set real secrets, uncomment **`DATABASE_URL`** / paths as needed. Set **`REGISTRATION_ENABLED`**, **`OPENAI_MODEL`**, etc. per **Step 5** of this guide.
+
+Embed hosting: **`EMBED_CORS_ORIGINS`** must be comma-separated **`https://…`** origins, not **`*`** in production (**Step 11** applies).
+
+### 7 — systemd (Gunicorn on localhost)
+
+**Multi-worker caveat:** **`memory_store`** is in-process (**Step 8**). Use **`-w 1`** unless you omit session memory or adopt shared storage.
+
+Create **`/etc/systemd/system/nexura.service`** (confirm **`WorkingDirectory`** and **`ExecStart`** paths match **§5 — Clone app and Python env**):
+
+```ini
+[Unit]
+Description=Nexura (Gunicorn)
+After=network.target
+
+[Service]
+User=nexura
+Group=nexura
+WorkingDirectory=/opt/nexura/repo/latest_rag_application
+EnvironmentFile=-/etc/nexura/environment
+ExecStart=/opt/nexura/repo/latest_rag_application/.venv/bin/gunicorn \
+  -w 1 -b 127.0.0.1:8000 --timeout 120 app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now nexura.service
+curl -sf http://127.0.0.1:8000/health
+```
+
+Expect **`{"status":"ok"}`**.
+
+### 8 — nginx + TLS (Let’s Encrypt)
+
+**`/etc/nginx/sites-available/nexura`**:
+
+```nginx
+server {
+    listen 80;
+    server_name app.example.com;
+
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -sf /etc/nginx/sites-available/nexura /etc/nginx/sites-enabled/nexura
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d app.example.com
+```
+
+### 9 — First login and superuser
+
+Follow **Step 7 (Path A)** in this guide: **`/login`** with tenant **`default`** (**`DEFAULT_TENANT_SLUG`**) unless you use **public registration**. If **`BOOTSTRAP_SUPERUSER=true`** was present **before the first seed**, the bootstrap admin can open **`/super/*`**. Rotate **`ADMIN_BOOTSTRAP_PASSWORD`**, then set **`BOOTSTRAP_SUPERUSER=false`** (and restart) before treating the deployment as hardened — see **`docs/TECHNICAL.md`** §4.
+
+### 10 — Backups on DigitalOcean
+
+| Asset | Recommendation |
+|--------|------------------|
+| **Managed Postgres** | Enable **automatic backups** in the DO control panel; test restore. |
+| **SQLite on Droplet** | Snapshot Droplet **or** copy **`rag_platform.db`** with the app stopped for consistency (**Step 12**). |
+| **Chroma + uploads** | **Volume snapshots** or **scheduled rsync**/Droplet backups; keep DB + vectors + uploads time-aligned (**Step 12**). |
+
+### 11 — Upgrades on the Droplet
+
+```bash
+sudo systemctl stop nexura
+sudo -iu nexura bash -lc 'cd /opt/nexura/repo/latest_rag_application && git pull && source .venv/bin/activate && pip install -r requirements-dev.txt'
+sudo systemctl start nexura
+```
+
+See **Step 13** for schema / **`init_database()`** behaviour.
+
+References: **Steps 5–13**, **`docs/TECHNICAL.md`** §4 (environment), §21 (security checklist).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Things to check |
@@ -412,7 +596,8 @@ Ensure **one writable persistence layer** per tenant data path; read-only contai
 | **403 on users / embed keys / new collection** | Plan limits (**`max_users`**, **`max_embed_keys`**, **`max_collections`**). Adjust **`tenants.plan_slug`** or **`plans_catalog.py`**. |
 | **Empty retrieval** | Documents ingested? Correct tenant? **`collection_ids`** in chat body if narrowing scope. |
 | **Wrong tenant data** | **`tenant_slug`** at login; **`DATABASE_URL`** points to intended DB. |
+| **502 Bad Gateway** (nginx) | **`nexura`** service stopped or crashing — **`journalctl -u nexura -f`**; **`curl http://127.0.0.1:8000/health`** on the Droplet; fix **`DATABASE_URL`**, **`OPENAI_API_KEY`**, or writable paths (**[DigitalOcean section](#digitalocean-droplet-deployment)**). |
 
 ---
 
-For architecture and every HTTP route, see **`docs/TECHNICAL.md`** (superusers: **`/super/technical`**). Cross-tenant administration is **`/super/organisations`**. Product overview and this deployment guide render together at **`/super/guides`** (sources **`docs/FEATURES_SUMMARY.md`** — including marketplace agents for platform operators — **`docs/DEPLOYMENT.md`**). Live API explorer: **`/docs`** (Swagger).
+For architecture and every HTTP route, see **`docs/TECHNICAL.md`** (superusers: **`/super/technical`**). Cross-tenant administration is **`/super/organisations`**. Product overview and this deployment guide render together at **`/super/guides`** (sources **`docs/FEATURES_SUMMARY.md`** — including marketplace agents for platform operators — **`docs/DEPLOYMENT.md`**, with a **[DigitalOcean (Droplet)](#digitalocean-droplet-deployment)** walkthrough). Live API explorer: **`/docs`** (Swagger).
