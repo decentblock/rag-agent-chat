@@ -17,6 +17,25 @@ def chroma_persist_path() -> str:
     return CHROMA_DB_FILE_PATH
 
 
+def _count_chunks_via_metadata_get(coll, where_filter: dict) -> int:
+    """Chroma versions differ: some reject ``count(where=…)``. Use paginated ``get``."""
+    total = 0
+    offset = 0
+    page = 8000
+    while True:
+        try:
+            batch = coll.get(where=where_filter, include=[], limit=page, offset=offset)
+        except TypeError:
+            batch = coll.get(where=where_filter, include=[], limit=max(page, 100_000))
+            return len(batch.get("ids") or [])
+        ids = batch.get("ids") or []
+        total += len(ids)
+        if len(ids) < page:
+            break
+        offset += page
+    return total
+
+
 def count_vectors_for_document_in_collection(
     tenant_id: str,
     collection_uuid: str,
@@ -31,19 +50,23 @@ def count_vectors_for_document_in_collection(
         persist_directory=chroma_persist_path(),
     )
     coll = vectordb._collection
+    filt: dict[str, Any] = {
+        "$and": [
+            {"tenant_id": tenant_id},
+            {"document_id": document_id},
+        ]
+    }
     try:
-        return int(
-            coll.count(
-                where={
-                    "$and": [
-                        {"tenant_id": tenant_id},
-                        {"document_id": document_id},
-                    ]
-                }
-            )
-        )
+        return int(coll.count(where=filt))
+    except TypeError:
+        # e.g. chromadb where ``Collection.count()`` does not accept ``where``
+        pass
     except Exception:
-        # Missing collection or backend quirks → treat as zero for diagnostics
+        return 0
+
+    try:
+        return _count_chunks_via_metadata_get(coll, filt)
+    except Exception:
         return 0
 
 
