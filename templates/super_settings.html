@@ -34,7 +34,7 @@
   <main class="main">
     <header class="main-header">
       <h2 class="main-title" id="panel-title">Platform settings</h2>
-      <p class="main-desc" id="panel-desc">Landing pricing and inbound sales forms at /contact-sales and /request-proposal.</p>
+      <p class="main-desc" id="panel-desc">Landing pricing, embed widget CORS, and inbound sales forms at /contact-sales and /request-proposal.</p>
     </header>
 
     <section class="panel active" style="padding-top:0;">
@@ -49,7 +49,9 @@
       <div class="super-grid">
         <div class="super-panel">
           <p class="muted" style="margin:0 0 1rem;font-size:0.9rem;line-height:1.55;">
-            Values below appear on the public landing (<strong>/</strong>). Clear a field and save to drop the database override and fall back to environment defaults from <code>config.py</code>.
+            Values below appear on the public landing (<strong>/</strong>) and control which websites may call <code>/api/embed/*</code> from the browser.
+            Clear a pricing field and save to drop that database override and fall back to environment defaults from <code>config.py</code>.
+            Clear the embed CORS textarea and save to fall back to <code>EMBED_CORS_ORIGINS</code>.
             <strong>Contact sales</strong> and <strong>Request proposal</strong> use on-site forms; submissions appear in the table on the right.
             Full operator documentation (<code>docs/TECHNICAL.md</code>) is under <a href="{{ url_for('super_technical_page') }}">Technical reference</a>.
             Product overview &amp; deployment: <a href="{{ url_for('super_guides_page') }}">Product &amp; deployment</a>.
@@ -85,6 +87,19 @@
               <div class="super-field">
                 <label for="marketing_growth_annual_blurb">Growth · annual subtitle</label>
                 <input class="input" id="marketing_growth_annual_blurb" name="marketing_growth_annual_blurb" type="text" value="{{ marketing.marketing_growth_annual_blurb }}" autocomplete="off" />
+              </div>
+            </fieldset>
+
+            <fieldset class="card card-elevated" style="padding:1.25rem;margin:0 0 1.25rem;border:none;">
+              <legend class="card-title" style="padding:0;margin:0 0 1rem;">Embed widget · CORS</legend>
+              <div class="super-field">
+                <label for="embed_cors_origins">Allowed browser origins</label>
+                <textarea class="input" id="embed_cors_origins" name="embed_cors_origins" rows="4" autocomplete="off" style="font-family:monospace;font-size:0.85rem;">{{ embed_cors_origins }}</textarea>
+                <span class="super-hint">
+                  Comma-separated <code>https://…</code> origins where the snippet is embedded (must match the browser’s <code>Origin</code> exactly — include <code>www</code> and apex variants if both are used).
+                  Use <code>*</code> only for local testing. Clear the field and save to drop the database override and use env <code>EMBED_CORS_ORIGINS</code> from the server.
+                  Env reference: <code>{{ embed_cors_env_hint }}</code>
+                </span>
               </div>
             </fieldset>
 

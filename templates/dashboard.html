@@ -151,9 +151,10 @@
           <h3 class="card-title">Website chat widget</h3>
           <p class="muted card-lead">
             Paste this snippet before <code>&lt;/body&gt;</code> on any site. Replace
-            <code>YOUR_EMBED_API_KEY</code> after creating a key below. Set
-            <code>EMBED_CORS_ORIGINS</code> on the server to allow customer origins (comma-separated;
-            avoid <code>*</code> in production).
+            <code>YOUR_EMBED_API_KEY</code> after creating a key below.
+            Customer domains must be listed under <strong>Platform settings</strong> (super admin):
+            <strong>Embed widget · CORS</strong> — or set <code>EMBED_CORS_ORIGINS</code> on the server when no DB override exists.
+            Avoid <code>*</code> in production.
           </p>
           <pre id="embed-snippet-template" class="code-block" style="white-space:pre-wrap;font-size:0.82rem;"></pre>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-embed-snippet">

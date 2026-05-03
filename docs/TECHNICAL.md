@@ -51,7 +51,7 @@ Browser (console) ──► Flask (app.py)
                         └── agent_registry.invoke()
                               └── rag_shared / variants ──► answer_flow.get_answer()
 
-Customer site widget ──► POST /api/embed/chat (+ Flask-CORS on /api/embed/*)
+Customer site widget ──► POST /api/embed/chat (per-response CORS headers on **`/api/embed/*`** from **`services/embed_cors_settings.py`**)
               └── Authorization: Bearer <ApiKey> → tenant + collection scope from api_keys row
 ```
 
@@ -59,7 +59,7 @@ Customer site widget ──► POST /api/embed/chat (+ Flask-CORS on /api/embed/
 - **Embeddings** live in **Chroma** on disk (`CHROMA_DB_FILE_PATH`).  
 - **Agents** are Python classes registered at import time in **`agents/bootstrap.py`**.  
 - **Marketplace presentation** (`agent_catalog.py`) is merged with the live registry for API/UI lists.  
-- **Embeddable chat** uses **`ApiKey`** rows + **`POST /api/embed/chat`**; **`flask-cors`** exposes **`/api/embed/*`** according to **`EMBED_CORS_ORIGINS`** (`config.py`).
+- **Embeddable chat** uses **`ApiKey`** rows + **`POST /api/embed/chat`**; CORS for **`/api/embed/*`** is applied each request from **`EMBED_CORS_ORIGINS`** (**`config.py`**) unless **`system_settings.embed_cors_origins`** overrides (**`/super/settings`**). See **`services/embed_cors_settings.py`**.
 
 ---
 
@@ -67,7 +67,7 @@ Customer site widget ──► POST /api/embed/chat (+ Flask-CORS on /api/embed/
 
 | Layer | Components |
 |-------|------------|
-| Web | Flask, Jinja2 templates, static JS/CSS, **`flask-cors`** (embed routes only) |
+| Web | Flask, Jinja2 templates, static JS/CSS |
 | ORM | Flask-SQLAlchemy, SQLAlchemy 2.x |
 | Auth | Werkzeug password hashing, Flask sessions; **embed API keys** (`services/embed_key_service.py`) for `/api/embed/chat` |
 | LLM / RAG | LangChain, LangChain-OpenAI, ChromaDB |
@@ -84,7 +84,7 @@ On application load (`app.py`):
 
 1. Flask app created; `SESSION_SECRET`, `SQLALCHEMY_DATABASE_URI` set.  
 2. `db.init_app(app)`, `register_principal_loader(app)`.  
-3. **`flask_cors.CORS`** registered for **`/api/embed/*`** using **`EMBED_CORS_ORIGINS`**.  
+3. **`before_request` / `after_request`** hooks apply **`Access-Control-*`** headers for **`/api/embed/*`** using **`services/embed_cors_settings.get_embed_cors_effective_raw()`** ( **`system_settings.embed_cors_origins`** → **`EMBED_CORS_ORIGINS`** env).
 4. `register_builtin_agents(replace=True)` registers all built-in agents.  
 5. **`init_database()`** runs: `db.create_all()`, **`_ensure_tenant_plan_columns()`** (adds **`plan_slug`**, **`usage_chat_month`**, **`usage_chat_count`**, and — when missing — **`tenants.is_active`**, **`billing_contact_email`**, **`payment_provider_customer_id`**, **`notes`**, **`allowed_agent_ids_json`** on SQLite / Postgres), **`_ensure_api_keys_columns()`** (adds embed-related **`api_keys`** columns such as **`default_agent_id`**, **`agent_config_json`**, **`key_prefix`** when missing), **`_ensure_user_is_superuser_column()`** (adds **`users.is_superuser`** when missing), then **`seed_if_needed(...)`** (permissions including **`embed:keys`**, default tenant, roles, bootstrap admin, default collection; **`grant_embed_keys_to_existing_editors`** backfills Editors created before that permission existed). **`system_settings`** rows override landing marketing values when present — see **`services/marketing_settings.py`**.  
 
@@ -116,7 +116,7 @@ All keys live in **`config.py`** unless noted. Environment variables override de
 | `DATABASE_URL` | `DATABASE_URL` | `sqlite:///<project>/rag_platform.db` |
 | `DEFAULT_TENANT_SLUG` | `DEFAULT_TENANT_SLUG` | `default` |
 | `REGISTRATION_ENABLED` | `REGISTRATION_ENABLED` | `true` — when enabled, **`GET`/`POST /register`** allow creating a new **`Tenant`** + first admin; disable with `false` / `0` / `no` |
-| `EMBED_CORS_ORIGINS` | `EMBED_CORS_ORIGINS` | Default **`*`**. For production embeds, set a comma-separated list of allowed **`Origin`** values (e.g. `https://www.customer.com,https://customer.com`). Applies only to **`/api/embed/*`** (methods **`POST`**, **`OPTIONS`**); headers allowed include **`Content-Type`**, **`Authorization`**, **`X-Nexura-Embed-Key`**. |
+| `EMBED_CORS_ORIGINS` | `EMBED_CORS_ORIGINS` | Default **`*`**. Used when **`system_settings`** key **`embed_cors_origins`** is unset or empty (clear field on **`/super/settings`**). Comma-separated **`Origin`** allow-list for **`/api/embed/*`** **`POST`**/**`OPTIONS`**; headers **`Content-Type`**, **`Authorization`**, **`X-Nexura-Embed-Key`**. Superusers can override via **Platform settings → Embed widget · CORS** without redeploy. |
 | `BOOTSTRAP_SUPERUSER` | `BOOTSTRAP_SUPERUSER` | `false` — when **`true`**, the seeded bootstrap admin (**`ADMIN_BOOTSTRAP_*`**) gets **`users.is_superuser=True`** so they can open **`/super/settings`**, **`/super/organisations`**, **`/super/guides`**, and **`/super/technical`** |
 | `MARKETING_PRICE_*` | `MARKETING_PRICE_STARTER_DISPLAY`, `MARKETING_PRICE_GROWTH_MONTHLY`, `MARKETING_PRICE_GROWTH_ANNUAL_EQUIV` | Strings shown on the landing pricing cards (defaults in **`config.py`**) |
 | `MARKETING_GROWTH_*_BLURB` | `MARKETING_GROWTH_MONTHLY_BLURB`, `MARKETING_GROWTH_ANNUAL_BLURB` | Short subtitles under Growth tier pricing |
@@ -178,7 +178,7 @@ One row per user (PK `user_id`): `agent_id`, `config_json` (JSON text), `updated
 
 ### 5.8 `system_settings`
 
-Key/value overrides for platform-wide UI (landing marketing). **`key`** PK (strings such as **`marketing_price_starter_display`** — see **`MARKETING_SETTING_KEYS`** in **`services/marketing_settings.py`**), **`value`** text, **`updated_at`**. Empty form fields on **`POST /super/settings`** delete the row so env defaults apply again.
+Key/value overrides for platform-wide UI (landing marketing **and** optional **`embed_cors_origins`** for embed CORS). **`key`** PK (strings such as **`marketing_price_starter_display`** — see **`MARKETING_SETTING_KEYS`** in **`services/marketing_settings.py`**, plus **`embed_cors_origins`** in **`services/embed_cors_settings.py`**), **`value`** text, **`updated_at`**. Empty marketing fields or an empty embed-CORS textarea on **`POST /super/settings`** delete that row so env defaults apply again.
 
 ### 5.9 `lead_inquiries`
 
@@ -658,7 +658,7 @@ Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), 
 4. Treat **`/api/marketplace/agents`** as public marketing data only.  
 5. **`uploads/`** and **`chroma-db/`** contain tenant data — backup and ACL accordingly.  
 6. Replace in-memory **`memory_store`** if horizontally scaling workers.  
-7. **Embed:** set **`EMBED_CORS_ORIGINS`** to an explicit allow-list of customer **`Origin`** values (avoid **`*`** on the public internet). Revoke compromised **`ApiKey`** rows immediately (**DELETE `/api/v1/embed-keys/<id>`**). Prefer **`allowed_collection_ids`** on keys to limit retrieval blast radius.  
+7. **Embed:** allow-list customer **`Origin`** values via **Platform settings → Embed widget · CORS** (**`system_settings.embed_cors_origins`**) or env **`EMBED_CORS_ORIGINS`** when no DB row exists (avoid **`*`** on the public internet). Revoke compromised **`ApiKey`** rows immediately (**DELETE `/api/v1/embed-keys/<id>`**). Prefer **`allowed_collection_ids`** on keys to limit retrieval blast radius.  
 8. **Embed secrets** are bearer tokens — anyone with **`nxemb_…`** can chat within that key’s scope; never commit keys to git or expose them in client-side source beyond the hosted snippet pattern (rotate if leaked).
 
 ---
@@ -667,7 +667,7 @@ Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), 
 
 1. **New agent:** implement `Agent`, register in **`agents/bootstrap.py`**, add **`MARKETPLACE_AGENTS`** row with matching `agent_id` and `available`.  
 2. **New permission:** add code in **`seed_database.PERMISSION_CODES`** and **`ROLE_MATRIX`**, migrate DB or re-seed carefully.  
-3. **API keys:** tenant **`ApiKey`** rows power **`POST /api/embed/chat`**; tune **`EMBED_CORS_ORIGINS`** for customer domains.  
+3. **API keys:** tenant **`ApiKey`** rows power **`POST /api/embed/chat`**; allow-list embed **`Origin`** headers in **Platform settings** or **`EMBED_CORS_ORIGINS`**.  
 4. **Billing:** map Growth/Enterprise tiers to metering (tokens, storage) externally. **`tenants.billing_contact_email`** / **`payment_provider_customer_id`** are operator-editable stubs until a gateway is integrated.  
 5. **Platform operators:** protect **`users.is_superuser`** accounts; **`PATCH /api/super/*`** can change another tenant’s **`plan_slug`**, suspend organisations, and disable users — rely on **`SESSION_SECRET`**, HTTPS, and DB access controls.  
 
@@ -675,7 +675,7 @@ Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), 
 
 ## 23. Deployment (companion guide)
 
-Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, optional containers, and a **[DigitalOcean (Droplet) walkthrough](DEPLOYMENT.md#digitalocean-droplet-deployment)** are maintained in **`docs/DEPLOYMENT.md`**, rendered with **`docs/FEATURES_SUMMARY.md`** for platform superusers at **`/super/guides`**. The **HTTP API** is **Swagger UI** on public **`/docs`** (spec **`/api/openapi.json`**). This **`TECHNICAL.md`** file is served at **`/super/technical`**. Organisation administration UI lives at **`/super/organisations`**; REST endpoints are §17.16.
+Step-by-step instructions for installing dependencies, configuring environment variables, running under **Gunicorn**, placing **nginx** in front, **systemd** supervision, backups, optional containers, **PostgreSQL on the same Droplet** ([**DEPLOYMENT.md** § Step 6 / “PostgreSQL installed on this Droplet”](DEPLOYMENT.md#postgresql-installed-on-this-droplet-ubuntu--digitalocean)), and a **[DigitalOcean (Droplet) walkthrough](DEPLOYMENT.md#digitalocean-droplet-deployment)** are maintained in **`docs/DEPLOYMENT.md`**, rendered with **`docs/FEATURES_SUMMARY.md`** for platform superusers at **`/super/guides`**. The **HTTP API** is **Swagger UI** on public **`/docs`** (spec **`/api/openapi.json`**). This **`TECHNICAL.md`** file is served at **`/super/technical`**. Organisation administration UI lives at **`/super/organisations`**; REST endpoints are §17.16.
 
 ---
 

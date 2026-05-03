@@ -28,6 +28,7 @@ This guide walks you from a clean machine to a running Nexura instance, then out
 5. [Step 4 — Disk layout](#step-4--choose-where-state-lives-on-disk)  
 6. [Step 5 — Environment variables](#step-5--configure-environment-variables)  
 7. [Step 6 — PostgreSQL](#step-6--use-postgresql-optional-but-typical-for-production)  
+    - [PostgreSQL on this Droplet (Ubuntu)](#postgresql-installed-on-this-droplet-ubuntu--digitalocean)  
 8. [Step 7 — First start & login](#step-7--first-start-database-bootstrap)  
 9. [Optional — Embed widget](#optional--customer-site-embed-widget)  
 10. [Step 8 — Gunicorn](#step-8--run-behind-gunicorn-production-app-server)  
@@ -186,22 +187,105 @@ Reference: **`docs/TECHNICAL.md`** §4 (configuration reference) and §24 (plans
 
 ## Step 6 — Use PostgreSQL (optional but typical for production)
 
-1. Create an empty database and user with DDL privileges (or run migrations manually — today the app uses **`db.create_all()`** at import time, not Alembic).
-2. Install a driver, e.g.:
+1. Choose **where** Postgres runs: **DigitalOcean Managed Database**, **PostgreSQL packages on your Droplet/server** ([walkthrough below](#postgresql-installed-on-this-droplet-ubuntu--digitalocean)), or another Postgres you operate. The app expects an empty logical database — it uses **`db.create_all()`** at startup (no Alembic migrations in-tree).
+2. Install the Python driver in the **same virtualenv** as Nexura:
 
    ```bash
    pip install psycopg[binary]
    ```
 
-3. Set **`DATABASE_URL`**, for example:
+3. Set **`DATABASE_URL`** (**`config.py`** reads this). Use the **`postgresql+psycopg://`** dialect, for example:
 
    ```text
-   postgresql+psycopg://nexura:PASSWORD@db.internal:5432/nexura
+   postgresql+psycopg://nexura:YOUR_PASSWORD@127.0.0.1:5432/nexura
    ```
 
-4. Start the app once so tables are created and **`seed_if_needed`** runs (bootstrap tenant + admin).
+   For **Managed Postgres** over TLS, include **`?sslmode=require`** when the vendor requires it (use the connection string from the vendor control panel — replace **placeholders** such as **`db-private-host`** with the **real** hostname).
 
-SQLite is acceptable for single-node demos; use Postgres when you need concurrency, backups, or HA.
+4. Start Nexura once so tables are created and **`seed_if_needed`** runs (bootstrap tenant + admin).
+
+SQLite is acceptable for single-node demos; use Postgres when you want better concurrency under load, **`pg_dump`** backups, or a clearer path to an external DB later.
+
+---
+
+### PostgreSQL installed on this Droplet (Ubuntu / DigitalOcean)
+
+Use these steps when Postgres runs **on the same machine** as Gunicorn (typical single Droplet).
+
+#### 1. Install server packages
+
+```bash
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib
+sudo systemctl enable --now postgresql
+sudo systemctl status postgresql --no-pager
+```
+
+Packaged Postgres on Ubuntu listens on **`127.0.0.1`** by default — match **`DATABASE_URL`** with **`...@127.0.0.1:5432/...`**; **do not** publish **`TCP 5432`** on a public Droplet firewall.
+
+#### 2. Create database role and database
+
+Replace **`YOUR_DB_PASSWORD`** with a strong secret (use the same value in **`DATABASE_URL`**):
+
+```bash
+sudo -u postgres psql -v ON_ERROR_STOP=1 <<'EOSQL'
+CREATE USER nexura WITH PASSWORD 'YOUR_DB_PASSWORD';
+CREATE DATABASE nexura OWNER nexura;
+GRANT ALL PRIVILEGES ON DATABASE nexura TO nexura;
+EOSQL
+```
+
+#### 3. Password auth from **`127.0.0.1`** (usually already correct)
+
+Ubuntu’s default **`/etc/postgresql/*/main/pg_hba.conf`** normally allows **`host … 127.0.0.1/32 … scram-sha-256`** (or **`md5`**). Inspect if TCP auth fails:
+
+```bash
+grep -E '^\s*host' /etc/postgresql/*/main/pg_hba.conf
+```
+
+After edits: **`sudo systemctl reload postgresql`**.
+
+#### 4. Verify before starting Nexura
+
+```bash
+PGPASSWORD='YOUR_DB_PASSWORD' psql -h 127.0.0.1 -p 5432 -U nexura -d nexura -c 'SELECT current_user, current_database();'
+```
+
+Expect **`nexura`** for both columns.
+
+#### 5. Nexura environment
+
+In **`/etc/nexura/environment`** (or shell exports):
+
+```bash
+DATABASE_URL=postgresql+psycopg://nexura:YOUR_DB_PASSWORD@127.0.0.1:5432/nexura
+```
+
+Ensure the app venv includes **`pip install psycopg[binary]`** (included in **[DigitalOcean §5](#5--clone-app-and-python-env)** example).
+
+Optional ordering in **`/etc/systemd/system/nexura.service`**:
+
+```ini
+After=network.target postgresql.service
+```
+
+Then **`sudo systemctl daemon-reload`** and **`sudo systemctl restart nexura.service`**.
+
+#### 6. Health check
+
+```bash
+curl -sf http://127.0.0.1:8000/health
+```
+
+#### 7. Backups (**`pg_dump`**)
+
+Align with **Step 12** — example compressed dump owned by **`postgres`**:
+
+```bash
+sudo -u postgres pg_dump -Fc -f /tmp/nexura-$(date +%F).dump nexura
+```
+
+Copy **`*.dump`** off the Droplet (object storage / backup tooling).
 
 ---
 
@@ -325,7 +409,8 @@ After=network.target
 [Service]
 User=nexura
 Group=nexura
-WorkingDirectory=/opt/nexura/latest_rag_application
+# APP_ROOT = directory containing app.py and .venv/
+WorkingDirectory=/opt/nexura/rag-agent-chat
 # Use EnvironmentFile=-/etc/nexura/environment with lines like:
 #   OPENAI_API_KEY=...
 #   SESSION_SECRET=...
@@ -334,7 +419,8 @@ WorkingDirectory=/opt/nexura/latest_rag_application
 #   DATABASE_URL=postgresql+psycopg://...
 #   REGISTRATION_ENABLED=false
 EnvironmentFile=-/etc/nexura/environment
-ExecStart=/opt/nexura/latest_rag_application/.venv/bin/gunicorn -w 2 -b 127.0.0.1:8000 --timeout 120 app:app
+# One line avoids systemd execution issues; prefer -w 1 while chat memory is in-process — see Step 8.
+ExecStart=/opt/nexura/rag-agent-chat/.venv/bin/gunicorn -w 1 -b 127.0.0.1:8000 --timeout 120 app:app
 Restart=always
 
 [Install]
@@ -403,12 +489,19 @@ Ensure **one writable persistence layer** per tenant data path; read-only contai
 
 This section is tailored for **[DigitalOcean Droplets](https://www.digitalocean.com/products/droplets)** (Ubuntu LTS): persistent disk for **`chroma-db/`**, **`uploads/`**, and logs; **nginx + Let’s Encrypt**; **systemd**. It mirrors Steps 8–12 with DO-specific defaults. *(Platform superusers: this guide also renders under **Console → Product & deployment** at **`/super/guides`.)*
 
+**Deployment directory (`APP_ROOT`).** **`systemd`** must use the **same** directory that contains **`app.py`**, **`requirements-dev.txt`**, and (after Step 5) **`.venv/`**. This walkthrough assumes:
+
+**`APP_ROOT=/opt/nexura/rag-agent-chat`** — for example **`/opt/nexura/rag-agent-chat/app.py`**.
+
+If your repo nests the Flask project (e.g. **`…/latest_rag_application/app.py`**), treat that **inner folder** as **`APP_ROOT`** everywhere below (**`WorkingDirectory`**, **`ExecStart`** path to **`.venv/bin/gunicorn`**, **`git pull`** upgrades).
+
 ### Before you provision
 
 | Approach | Notes |
 |----------|--------|
 | **Ubuntu Droplet + nginx + systemd** | **Recommended.** Matches Chroma + file uploads local paths (Steps 4, 12). Attach a **[Volume](https://www.digitalocean.com/products/block-storage)** (e.g. mount **`/var/lib/nexura`**) if the Droplet disk is small. |
-| **Droplet + [Managed PostgreSQL](https://www.digitalocean.com/products/managed-databases)** | **Recommended** instead of SQLite for production: backups and concurrency (**Step 6**). Use the **private** connection host from the Droplet’s VPC when possible; set **`DATABASE_URL`** (see **`config.py`** / **Step 5**). |
+| **Droplet + [Managed PostgreSQL](https://www.digitalocean.com/products/managed-databases)** | **Recommended** instead of SQLite when you want a separate DB cluster: backups and concurrency (**Step 6**). Use the **real** hostname from the DO control panel (**not** literal placeholders like **`db-private-host`**); VPC **private** host requires the Droplet on the **same VPC** / trusted sources. |
+| **PostgreSQL on this Droplet** | Postgres and Nexura share one VM (**[details — Step 6](#postgresql-installed-on-this-droplet-ubuntu--digitalocean)**). **`DATABASE_URL`** uses **`127.0.0.1:5432`** — do **not** open **TCP 5432** on a public Droplet firewall. |
 | **DigitalOcean App Platform** | **Not recommended as-is:** deploys typically use an **ephemeral** filesystem — **Chroma**, **uploads**, and default **SQLite** can be reset on redeploy unless you redesign storage (object storage + code changes). Use a Droplet until then. |
 
 ### 1 — Create Droplet, DNS, firewall
@@ -419,11 +512,18 @@ This section is tailored for **[DigitalOcean Droplets](https://www.digitalocean.
 
 ### 2 — Optional Managed Postgres
 
-Create a PostgreSQL cluster in the **same region/VPC**, create database + user, copy the **URI** DigitalOcean shows. Typical **`DATABASE_URL`** (adjust user, password, host, port, DB name; **`pip install psycopg[binary]`** per **Step 6**):
+Create a PostgreSQL cluster in the **same region/VPC**, create database + user, copy the **connection string** from the control panel and paste **verbatim** into **`DATABASE_URL`** (often includes **`sslmode=require`**). Do **not** keep template hostnames — they will fail DNS (**`journalctl`** shows “failed to resolve host”).
 
-```text
-postgresql+psycopg://doadmin:PASSWORD@private-host.region.db.ondigitalocean.com:25060/defaultdb?sslmode=require
-```
+### PostgreSQL on the same Droplet (local packages)
+
+Prefer this when everything runs on **one Droplet**. Full procedure: **[Step 6 — PostgreSQL installed on this Droplet](#postgresql-installed-on-this-droplet-ubuntu--digitalocean)**. Summary:
+
+1. **`sudo apt install -y postgresql postgresql-contrib`** then **`sudo systemctl enable --now postgresql`**  
+2. Create **`nexura`** DB user + **`nexura`** database as **`postgres`** (**`sudo -u postgres psql …`**) — same password must appear in **`DATABASE_URL`**  
+3. **`DATABASE_URL=postgresql+psycopg://nexura:PASSWORD@127.0.0.1:5432/nexura`** in **`/etc/nexura/environment`**  
+4. Optionally add **`After=postgresql.service`** to **`nexura.service`**, **`systemctl daemon-reload`**, then **`systemctl restart nexura`**
+
+Perform these **before** the first Nexura start that connects to Postgres. Install **`psycopg[binary]`** in Step 6 / **[§5 Clone](#5--clone-app-and-python-env)**.
 
 ### 3 — Baseline packages and deploy user
 
@@ -452,23 +552,30 @@ sudo chown -R nexura:nexura /var/lib/nexura
 
 ### 5 — Clone app and Python env
 
-Adjust **`git clone`** and paths to match your repo layout.
+Ensure **`nexura`** owns the tree and **`app.py`** resolves to **`APP_ROOT/app.py`** (here **`/opt/nexura/rag-agent-chat/app.py`**):
 
 ```bash
+sudo mkdir -p /opt/nexura/rag-agent-chat
+sudo chown -R nexura:nexura /opt/nexura/rag-agent-chat
+
 sudo -iu nexura
-cd /opt/nexura
-git clone https://github.com/YOUR_ORG/YOUR_REPO.git repo
-cd repo/latest_rag_application
+cd /opt/nexura/rag-agent-chat
+# Put the Nexura codebase in this folder (example: shallow clone contents into APP_ROOT).
+git clone --depth 1 https://github.com/YOUR_ORG/YOUR_REPO.git .
+# If your repo only contains a subfolder (e.g. latest_rag_application/), clone then:
+#   git clone … /tmp/repo && rsync -a /tmp/repo/latest_rag_application/ .
+# Confirm:
+test -f app.py || { echo "app.py missing — adjust clone so APP_ROOT contains app.py"; exit 1; }
+
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements-dev.txt
-pip install gunicorn "psycopg[binary]"
+pip install -r requirements-dev.txt gunicorn "psycopg[binary]"
 mkdir -p logs chroma-db uploads
 exit
 ```
 
-If **not** using a Volume for Chroma/logs/uploads, ensure **`nexura`** can write **`chroma-db/`**, **`uploads/`**, **`logs/`** under **`latest_rag_application/`**.
+If **not** using a Volume for Chroma/logs/uploads, ensure **`nexura`** can write **`chroma-db/`**, **`uploads/`**, **`logs/`** next to **`app.py`**.
 
 ### 6 — Secrets and environment (`/etc/nexura/environment`)
 
@@ -482,8 +589,10 @@ VERIFY_SSL=true
 EMBED_CORS_ORIGINS=https://app.example.com
 # Optional — only effective on first seed; then set false / remove line
 BOOTSTRAP_SUPERUSER=true
-# Uncomment if using Managed Postgres (see §2 above)
-# DATABASE_URL=postgresql+psycopg://...
+# Postgres — use REAL values (examples):
+# DATABASE_URL=postgresql+psycopg://nexura:STRONG_PW@127.0.0.1:5432/nexura
+# DATABASE_URL='postgresql+psycopg://doadmin:...@HOST_FROM_DO_PANEL:25060/defaultdb?sslmode=require'
+# Omit DATABASE_URL entirely to fall back to SQLite under APP_ROOT.
 # Uncomment if using Volume paths
 # CHROMA_DB_FILE_PATH=/var/lib/nexura/chroma-db
 # LOG_DIR=/var/lib/nexura/logs
@@ -500,7 +609,7 @@ Embed hosting: **`EMBED_CORS_ORIGINS`** must be comma-separated **`https://…`*
 
 **Multi-worker caveat:** **`memory_store`** is in-process (**Step 8**). Use **`-w 1`** unless you omit session memory or adopt shared storage.
 
-Create **`/etc/systemd/system/nexura.service`** (confirm **`WorkingDirectory`** and **`ExecStart`** paths match **§5 — Clone app and Python env**):
+Create **`/etc/systemd/system/nexura.service`** (same **`WorkingDirectory`** and **`ExecStart`** prefixes as **`APP_ROOT`**):
 
 ```ini
 [Unit]
@@ -510,10 +619,9 @@ After=network.target
 [Service]
 User=nexura
 Group=nexura
-WorkingDirectory=/opt/nexura/repo/latest_rag_application
+WorkingDirectory=/opt/nexura/rag-agent-chat
 EnvironmentFile=-/etc/nexura/environment
-ExecStart=/opt/nexura/repo/latest_rag_application/.venv/bin/gunicorn \
-  -w 1 -b 127.0.0.1:8000 --timeout 120 app:app
+ExecStart=/opt/nexura/rag-agent-chat/.venv/bin/gunicorn -w 1 -b 127.0.0.1:8000 --timeout 120 app:app
 Restart=always
 
 [Install]
@@ -565,6 +673,7 @@ Follow **Step 7 (Path A)** in this guide: **`/login`** with tenant **`default`**
 | Asset | Recommendation |
 |--------|------------------|
 | **Managed Postgres** | Enable **automatic backups** in the DO control panel; test restore. |
+| **Postgres on this Droplet** | **`pg_dump`** (see **[Step 6 §7](#postgresql-installed-on-this-droplet-ubuntu--digitalocean)** and **Step 12**); copy dumps off-droplet nightly. |
 | **SQLite on Droplet** | Snapshot Droplet **or** copy **`rag_platform.db`** with the app stopped for consistency (**Step 12**). |
 | **Chroma + uploads** | **Volume snapshots** or **scheduled rsync**/Droplet backups; keep DB + vectors + uploads time-aligned (**Step 12**). |
 
@@ -572,7 +681,7 @@ Follow **Step 7 (Path A)** in this guide: **`/login`** with tenant **`default`**
 
 ```bash
 sudo systemctl stop nexura
-sudo -iu nexura bash -lc 'cd /opt/nexura/repo/latest_rag_application && git pull && source .venv/bin/activate && pip install -r requirements-dev.txt'
+sudo -iu nexura bash -lc 'cd /opt/nexura/rag-agent-chat && git pull && source .venv/bin/activate && pip install -r requirements-dev.txt'
 sudo systemctl start nexura
 ```
 
@@ -588,7 +697,7 @@ References: **Steps 5–13**, **`docs/TECHNICAL.md`** §4 (environment), §21 (s
 |---------|-------------------|
 | **401 on APIs** | Session cookie missing; login via **`/login`**; same-site cookie settings behind proxy (**`X-Forwarded-*`**). |
 | **401 on `/api/embed/chat`** | Missing/wrong **`Authorization: Bearer`** or **`X-Nexura-Embed-Key`**; key revoked (**`is_active`** false). |
-| **Browser blocks embed widget (CORS)** | **`EMBED_CORS_ORIGINS`** must include the customer page’s **`Origin`** (scheme + host + port). Restart app after env change. |
+| **Browser blocks embed widget (CORS)** | **`Origin`** of the page hosting the snippet must be listed in **Platform settings → Embed widget · CORS** (super admin) or env **`EMBED_CORS_ORIGINS`** when no DB row exists. Scheme/host/port must match exactly (**`www`** vs apex). Restart **not** required after saving settings. |
 | **500 on chat** | **`OPENAI_API_KEY`**; plan quotas (**`plans_catalog`**); Chroma path writable; logs under **`LOG_DIR`**. |
 | **500 on upload / “embedding API blocked”** | Corporate firewall blocking **`api.openai.com`** (HTML block page in logs). Use **`OPENAI_API_BASE`**, approved gateway, or unrestricted network. See Step 5. |
 | **`CERTIFICATE_VERIFY_FAILED` on embeddings** | TLS inspection: **`VERIFY_SSL=false`** for OpenAI HTTP client only, or install corporate root CA; prefer **`VERIFY_SSL=true`** when verification works. |
@@ -597,6 +706,9 @@ References: **Steps 5–13**, **`docs/TECHNICAL.md`** §4 (environment), §21 (s
 | **Empty retrieval** | Documents ingested? Correct tenant? **`collection_ids`** in chat body if narrowing scope. |
 | **Wrong tenant data** | **`tenant_slug`** at login; **`DATABASE_URL`** points to intended DB. |
 | **502 Bad Gateway** (nginx) | **`nexura`** service stopped or crashing — **`journalctl -u nexura -f`**; **`curl http://127.0.0.1:8000/health`** on the Droplet; fix **`DATABASE_URL`**, **`OPENAI_API_KEY`**, or writable paths (**[DigitalOcean section](#digitalocean-droplet-deployment)**). |
+| **Postgres** “failed to resolve host” | **`DATABASE_URL`** still uses a docs **placeholder** (e.g. **`db-private-host`**) — substitute the **real DO host** or use **`127.0.0.1`** if Postgres is **[on-Droplet](#postgresql-installed-on-this-droplet-ubuntu--digitalocean)**. |
+| **Postgres connection refused / auth failed** | **`postgresql`** running? (**`systemctl status postgresql`**). Password, username, **`DATABASE_URL`**, and **`pg_hba.conf`** (**`127.0.0.1`**) aligned? Test **`PGPASSWORD=… psql -h 127.0.0.1 -U nexura -d nexura`** (on-Droplet install). |
+| **`status=203/EXEC`** (**`systemctl status nexura`**) | **`ExecStart`** path wrong or **`gunicorn`** missing — verify **`WorkingDirectory`** is the folder with **`app.py`**; **`ls APP_ROOT/.venv/bin/gunicorn`**; keep **`ExecStart`** on **one line** (**[DigitalOcean §5–§7](#digitalocean-droplet-deployment)**). |
 
 ---
 

@@ -14,7 +14,6 @@ from flask import (
     session,
     url_for,
 )
-from flask_cors import CORS
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -35,7 +34,6 @@ from config import (
     ADMIN_BOOTSTRAP_USERNAME,
     DATABASE_URL,
     DEFAULT_TENANT_SLUG,
-    EMBED_CORS_ORIGINS,
     PORT,
     REGISTRATION_ENABLED,
     SESSION_SECRET,
@@ -69,25 +67,21 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
-def _embed_cors_origins():
-    raw = (EMBED_CORS_ORIGINS or "").strip()
-    if raw == "*":
-        return "*"
-    parts = [x.strip() for x in raw.split(",") if x.strip()]
-    return parts if parts else "*"
-
-
-CORS(
-    app,
-    resources={
-        r"/api/embed/*": {
-            "origins": _embed_cors_origins(),
-            "methods": ["POST", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization", "X-Nexura-Embed-Key"],
-            "max_age": 86400,
-        }
-    },
+from services.embed_cors_settings import (
+    apply_embed_cors_to_response,
+    handle_embed_cors_preflight,
 )
+
+
+@app.before_request
+def _nexura_embed_cors_preflight():
+    return handle_embed_cors_preflight()
+
+
+@app.after_request
+def _nexura_embed_cors_headers(response):
+    return apply_embed_cors_to_response(response)
+
 
 register_builtin_agents(replace=True)
 
@@ -666,15 +660,28 @@ def super_settings_page():
     )
 
     if request.method == "POST":
+        from services.embed_cors_settings import save_embed_cors_from_form
+
+        save_embed_cors_from_form(request.form.get("embed_cors_origins", ""))
         payload = {k: request.form.get(k, "") for k in MARKETING_SETTING_KEYS}
         save_marketing_settings_from_form(payload)
-        flash("Platform settings saved. Changes apply on the public landing page.", "success")
+        flash(
+            "Platform settings saved. Embed CORS updates apply immediately for /api/embed.",
+            "success",
+        )
         return redirect(url_for("super_settings_page"))
+
+    from services.embed_cors_settings import (
+        embed_cors_env_default_display,
+        get_embed_cors_effective_raw,
+    )
 
     return render_template(
         "super_settings.html",
         marketing=get_super_admin_form_values(),
         env_defaults=marketing_env_defaults(),
+        embed_cors_origins=get_embed_cors_effective_raw(),
+        embed_cors_env_hint=embed_cors_env_default_display(),
         username=g.current_user.username,
         tenant_slug=g.tenant.slug,
         is_superuser=True,
