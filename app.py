@@ -1,9 +1,12 @@
 import os
+import csv
 from datetime import timedelta
+from io import StringIO
 from pathlib import Path
 
 from flask import (
     Flask,
+    Response,
     abort,
     flash,
     g,
@@ -41,7 +44,7 @@ from config import (
 )
 from extensions import db
 from logging_setup import logger
-from models import Document, LeadInquiry, Role, Tenant, User
+from models import ApiKey, Document, EmbedVisitorLead, LeadInquiry, Role, Tenant, User
 from principal import register_principal_loader
 from rbac import permission_required, roles_include_users_manage, user_has_permission
 from rag_ingestion import (
@@ -348,6 +351,51 @@ def _ensure_documents_kb_columns() -> None:
         db.session.commit()
 
 
+def _ensure_tenant_embed_widget_columns() -> None:
+    """Embed widget branding, visitor form toggle, engagement counter."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(db.engine)
+    if not insp.has_table("tenants"):
+        return
+    existing = {c["name"] for c in insp.get_columns("tenants")}
+    dialect = db.engine.dialect.name
+    stmts: list[str] = []
+
+    def add(name: str, sqlite_sql: str, pg_sql: str) -> None:
+        if name not in existing:
+            if dialect == "sqlite":
+                stmts.append(sqlite_sql)
+            elif dialect == "postgresql":
+                stmts.append(pg_sql)
+
+    add(
+        "embed_agent_display_name",
+        "ALTER TABLE tenants ADD COLUMN embed_agent_display_name VARCHAR(255)",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS embed_agent_display_name VARCHAR(255)",
+    )
+    add(
+        "embed_welcome_message",
+        "ALTER TABLE tenants ADD COLUMN embed_welcome_message TEXT",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS embed_welcome_message TEXT",
+    )
+    add(
+        "embed_collect_visitor_contact",
+        "ALTER TABLE tenants ADD COLUMN embed_collect_visitor_contact BOOLEAN DEFAULT 1 NOT NULL",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS embed_collect_visitor_contact BOOLEAN DEFAULT TRUE NOT NULL",
+    )
+    add(
+        "embed_engagement_count",
+        "ALTER TABLE tenants ADD COLUMN embed_engagement_count INTEGER DEFAULT 0 NOT NULL",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS embed_engagement_count INTEGER DEFAULT 0 NOT NULL",
+    )
+
+    for sql in stmts:
+        db.session.execute(text(sql))
+    if stmts:
+        db.session.commit()
+
+
 def init_database() -> None:
     with app.app_context():
         db.create_all()
@@ -355,6 +403,7 @@ def init_database() -> None:
         _ensure_api_keys_columns()
         _ensure_user_is_superuser_column()
         _ensure_documents_kb_columns()
+        _ensure_tenant_embed_widget_columns()
         seed_if_needed(
             default_tenant_slug=DEFAULT_TENANT_SLUG,
             default_tenant_name="Default organization",
@@ -1083,6 +1132,71 @@ def chat():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/embed/widget-config", methods=["GET"])
+def embed_widget_config():
+    """Public widget copy + visitor form flag (Bearer embed key + CORS)."""
+    from services.embed_cors_settings import validate_embed_post_origin
+    from services.embed_key_service import authenticate_embed_key, extract_embed_token_from_request
+    from services.embed_visitor_flow import tenant_widget_public_dict
+
+    tok = extract_embed_token_from_request()
+    row = authenticate_embed_key(tok)
+    if not row:
+        return jsonify({"error": "Invalid or inactive embed API key"}), 401
+
+    origin_hdr = request.headers.get("Origin")
+    if not validate_embed_post_origin(origin_hdr, row):
+        return jsonify({"error": "Origin not allowed for this embed key"}), 403
+
+    tenant_row = Tenant.query.filter_by(id=str(row.tenant_id)).first()
+    if not tenant_row:
+        return jsonify({"error": "Tenant not found"}), 500
+    if not getattr(tenant_row, "is_active", True):
+        return jsonify({"error": "Organisation suspended"}), 403
+
+    return jsonify(tenant_widget_public_dict(tenant_row)), 200
+
+
+@app.route("/api/embed/visitor-contact", methods=["POST"])
+def embed_visitor_contact():
+    """Store mandatory name/email (+ optional phone/message) before chat."""
+    from services.embed_cors_settings import validate_embed_post_origin
+    from services.embed_key_service import authenticate_embed_key, extract_embed_token_from_request
+    from services.embed_visitor_flow import persist_visitor_lead, validate_visitor_lead_payload
+
+    tok = extract_embed_token_from_request()
+    row = authenticate_embed_key(tok)
+    if not row:
+        return jsonify({"error": "Invalid or inactive embed API key"}), 401
+
+    origin_hdr = request.headers.get("Origin")
+    if not validate_embed_post_origin(origin_hdr, row):
+        return jsonify({"error": "Origin not allowed for this embed key"}), 403
+
+    tenant_row = Tenant.query.filter_by(id=str(row.tenant_id)).first()
+    if not tenant_row:
+        return jsonify({"error": "Tenant not found"}), 500
+    if not getattr(tenant_row, "is_active", True):
+        return jsonify({"error": "Organisation suspended"}), 403
+
+    payload = request.get_json(force=True, silent=True) or {}
+    cleaned, verr = validate_visitor_lead_payload(payload)
+    if verr:
+        return jsonify({"error": verr}), 400
+
+    try:
+        persist_visitor_lead(
+            tenant_id=str(row.tenant_id),
+            embed_key_id=str(row.id),
+            cleaned=cleaned,
+        )
+    except Exception:
+        logger.exception("visitor lead persist failed")
+        return jsonify({"error": "Could not save visitor details"}), 500
+
+    return jsonify({"ok": True}), 200
+
+
 @app.route("/api/embed/chat", methods=["POST"])
 def embed_chat():
     """Cross-origin chat using tenant embed API key (Bearer or X-Nexura-Embed-Key)."""
@@ -1182,11 +1296,168 @@ def embed_chat():
         )
         if err:
             return jsonify({"error": err}), 400
+        try:
+            tenant_row.embed_engagement_count = int(
+                getattr(tenant_row, "embed_engagement_count", 0) or 0
+            ) + 1
+            db.session.commit()
+        except Exception:
+            logger.exception("embed engagement counter failed")
         record_successful_chat_turn(str(row.tenant_id))
         return jsonify(result), 200
     except Exception as exc:
         logger.exception("embed chat failed")
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/v1/tenant/embed-branding", methods=["GET", "PUT"])
+@login_required
+@permission_required("embed:keys")
+def tenant_embed_branding_route():
+    """Org-facing widget title, welcome text, visitor form toggle, engagement counter."""
+    t = g.tenant
+    if request.method == "GET":
+        rc = getattr(t, "embed_collect_visitor_contact", None)
+        collect = True if rc is None else bool(rc)
+        return jsonify(
+            {
+                "embed_agent_display_name": getattr(t, "embed_agent_display_name", None) or "",
+                "embed_welcome_message": getattr(t, "embed_welcome_message", None) or "",
+                "embed_collect_visitor_contact": collect,
+                "embed_engagement_count": int(getattr(t, "embed_engagement_count", 0) or 0),
+            }
+        )
+
+    body = request.get_json(force=True, silent=True) or {}
+    title = str(body.get("embed_agent_display_name") or "").strip()[:255]
+    welcome = str(body.get("embed_welcome_message") or "").strip()[:16000]
+    raw_collect = body.get("embed_collect_visitor_contact")
+    if isinstance(raw_collect, bool):
+        collect = raw_collect
+    elif isinstance(raw_collect, str):
+        collect = raw_collect.lower() in ("1", "true", "yes", "on")
+    elif raw_collect is None:
+        rc = getattr(t, "embed_collect_visitor_contact", None)
+        collect = True if rc is None else bool(rc)
+    else:
+        collect = bool(raw_collect)
+
+    t.embed_agent_display_name = title or None
+    t.embed_welcome_message = welcome or None
+    t.embed_collect_visitor_contact = collect
+    db.session.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/api/v1/tenant/embed-visitor-leads", methods=["GET"])
+@login_required
+@permission_required("embed:keys")
+def tenant_embed_visitor_leads_list():
+    """Paginated visitor submissions from embed contact gate."""
+    tid = str(g.tenant.id)
+    try:
+        limit = int(request.args.get("limit", "50"))
+    except ValueError:
+        limit = 50
+    try:
+        offset = int(request.args.get("offset", "0"))
+    except ValueError:
+        offset = 0
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+
+    base = EmbedVisitorLead.query.filter_by(tenant_id=tid)
+    total = base.count()
+    rows = (
+        db.session.query(EmbedVisitorLead, ApiKey.name.label("embed_key_name"))
+        .outerjoin(ApiKey, EmbedVisitorLead.embed_key_id == ApiKey.id)
+        .filter(EmbedVisitorLead.tenant_id == tid)
+        .order_by(EmbedVisitorLead.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    def row_payload(lead: EmbedVisitorLead, key_name: str | None) -> dict:
+        return {
+            "id": lead.id,
+            "created_at": lead.created_at.isoformat() + "Z" if lead.created_at else None,
+            "name": lead.name,
+            "email": lead.email,
+            "phone": lead.phone,
+            "initial_message": lead.initial_message,
+            "visitor_session": lead.visitor_session,
+            "embed_key_id": lead.embed_key_id,
+            "embed_key_name": key_name or None,
+        }
+
+    return jsonify(
+        {
+            "tenant_id": tid,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "leads": [row_payload(l, kn) for l, kn in rows],
+        }
+    )
+
+
+@app.route("/api/v1/tenant/embed-visitor-leads/export", methods=["GET"])
+@login_required
+@permission_required("embed:keys")
+def tenant_embed_visitor_leads_export():
+    """CSV export of visitor submissions (same permission as embed keys)."""
+    tid = str(g.tenant.id)
+    max_rows = 10000
+    rows = (
+        db.session.query(EmbedVisitorLead, ApiKey.name.label("embed_key_name"))
+        .outerjoin(ApiKey, EmbedVisitorLead.embed_key_id == ApiKey.id)
+        .filter(EmbedVisitorLead.tenant_id == tid)
+        .order_by(EmbedVisitorLead.created_at.desc())
+        .limit(max_rows)
+        .all()
+    )
+
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(
+        [
+            "created_at_utc",
+            "name",
+            "email",
+            "phone",
+            "initial_message",
+            "visitor_session",
+            "embed_key_name",
+            "embed_key_id",
+            "lead_id",
+        ]
+    )
+    for lead, key_name in rows:
+        ts = lead.created_at.isoformat() + "Z" if lead.created_at else ""
+        w.writerow(
+            [
+                ts,
+                lead.name,
+                lead.email,
+                lead.phone or "",
+                (lead.initial_message or "").replace("\r\n", "\n").replace("\n", " ").strip(),
+                lead.visitor_session,
+                key_name or "",
+                lead.embed_key_id or "",
+                lead.id,
+            ]
+        )
+
+    csv_bytes = buf.getvalue().encode("utf-8")
+    return Response(
+        csv_bytes,
+        mimetype="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="embed-visitor-leads.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.route("/api/v1/embed-keys", methods=["GET"])

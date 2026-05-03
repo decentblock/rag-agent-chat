@@ -11,7 +11,7 @@ from services.embed_key_service import parse_allowed_embed_origins
 
 EMBED_CORS_SETTING_KEY = "embed_cors_origins"
 
-ALLOW_METHODS = "POST, OPTIONS"
+ALLOW_METHODS = "GET, POST, OPTIONS"
 ALLOW_HEADERS = "Content-Type, Authorization, X-Nexura-Embed-Key"
 MAX_AGE = "86400"
 

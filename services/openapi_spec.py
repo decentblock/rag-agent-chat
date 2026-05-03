@@ -50,7 +50,10 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
             },
             {
                 "name": "Embed",
-                "description": "Cross-origin widget chat (`nxemb_…` key) and tenant embed-key CRUD (`embed:keys`).",
+                "description": (
+                    "Cross-origin widget (`nxemb_…` Bearer): chat, widget-config, visitor-contact. "
+                    "Tenant console: embed-key CRUD, branding, visitor-lead export (`embed:keys`)."
+                ),
             },
             {
                 "name": "Knowledge base",
@@ -123,6 +126,97 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                         "llm_route": {"type": "string"},
                         "llm_config_ref": {},
                         "client_hint": {},
+                    },
+                },
+                "EmbedWidgetConfig": {
+                    "type": "object",
+                    "description": "Public widget copy loaded by the embed script (no secrets).",
+                    "properties": {
+                        "agent_display_name": {
+                            "type": "string",
+                            "nullable": True,
+                            "description": "Header title; omit or empty → browser may use data-title on script tag.",
+                        },
+                        "welcome_message": {
+                            "type": "string",
+                            "nullable": True,
+                            "description": "Shown as first assistant bubble after chat opens.",
+                        },
+                        "collect_visitor_contact": {
+                            "type": "boolean",
+                            "description": "When true, widget shows name/email gate before chat.",
+                        },
+                    },
+                },
+                "EmbedVisitorContactRequest": {
+                    "type": "object",
+                    "required": ["name", "email", "visitor_session"],
+                    "properties": {
+                        "name": {"type": "string", "maxLength": 255},
+                        "email": {"type": "string", "maxLength": 255},
+                        "phone": {"type": "string", "maxLength": 64, "nullable": True},
+                        "message": {
+                            "type": "string",
+                            "nullable": True,
+                            "description": "Stored as initial_message on the lead row.",
+                        },
+                        "visitor_session": {
+                            "type": "string",
+                            "maxLength": 160,
+                            "description": "Stable id from the widget (e.g. localStorage).",
+                        },
+                    },
+                },
+                "EmbedVisitorContactOk": {
+                    "type": "object",
+                    "required": ["ok"],
+                    "properties": {"ok": {"type": "boolean"}},
+                },
+                "TenantEmbedBranding": {
+                    "type": "object",
+                    "properties": {
+                        "embed_agent_display_name": {"type": "string"},
+                        "embed_welcome_message": {"type": "string"},
+                        "embed_collect_visitor_contact": {"type": "boolean"},
+                        "embed_engagement_count": {
+                            "type": "integer",
+                            "description": "Successful embed chat turns (read-only via GET).",
+                        },
+                    },
+                },
+                "TenantEmbedBrandingPut": {
+                    "type": "object",
+                    "properties": {
+                        "embed_agent_display_name": {"type": "string"},
+                        "embed_welcome_message": {"type": "string"},
+                        "embed_collect_visitor_contact": {"type": "boolean"},
+                    },
+                    "description": "Omitted fields keep existing values where applicable.",
+                },
+                "EmbedVisitorLeadsList": {
+                    "type": "object",
+                    "properties": {
+                        "tenant_id": {"type": "string"},
+                        "total": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                        "offset": {"type": "integer"},
+                        "leads": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "created_at": {"type": "string", "nullable": True},
+                                    "name": {"type": "string"},
+                                    "email": {"type": "string"},
+                                    "phone": {"type": "string", "nullable": True},
+                                    "initial_message": {"type": "string", "nullable": True},
+                                    "visitor_session": {"type": "string"},
+                                    "embed_key_id": {"type": "string", "nullable": True},
+                                    "embed_key_name": {"type": "string", "nullable": True},
+                                },
+                            },
+                        },
                     },
                 },
             },
@@ -268,6 +362,63 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                     },
                 }
             },
+            "/api/embed/widget-config": {
+                "get": {
+                    "tags": ["Embed"],
+                    "summary": "Widget branding & visitor-form flag",
+                    "description": (
+                        "Returns display name, welcome message, and whether to collect visitor contact before chat. "
+                        "Requires allowed browser `Origin` for the embed key."
+                    ),
+                    "operationId": "embedWidgetConfig",
+                    "security": [{"EmbedBearer": []}],
+                    "responses": {
+                        "200": {
+                            "description": "Public widget settings",
+                            "content": {
+                                "application/json": {"schema": {"$ref": "#/components/schemas/EmbedWidgetConfig"}}
+                            },
+                        },
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {
+                            "description": "Origin not allowed or organisation suspended",
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}},
+                        },
+                    },
+                }
+            },
+            "/api/embed/visitor-contact": {
+                "post": {
+                    "tags": ["Embed"],
+                    "summary": "Submit visitor details (embed contact gate)",
+                    "description": (
+                        "Persists name and email (required), optional phone and message, keyed by visitor_session. "
+                        "Same auth and Origin rules as embed chat."
+                    ),
+                    "operationId": "embedVisitorContact",
+                    "security": [{"EmbedBearer": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/EmbedVisitorContactRequest"}
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Saved",
+                            "content": {
+                                "application/json": {"schema": {"$ref": "#/components/schemas/EmbedVisitorContactOk"}}
+                            },
+                        },
+                        "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "500": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                    },
+                }
+            },
             "/api/v1/embed-keys": {
                 "get": {
                     "tags": ["Embed"],
@@ -356,6 +507,87 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                         }
                     ],
                     "responses": {"200": {"description": "Revoked"}, "404": {"description": "Not found"}},
+                }
+            },
+            "/api/v1/tenant/embed-branding": {
+                "get": {
+                    "tags": ["Embed"],
+                    "summary": "Widget appearance & engagement counter",
+                    "operationId": "getTenantEmbedBranding",
+                    "security": [{"SessionCookie": []}],
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {"schema": {"$ref": "#/components/schemas/TenantEmbedBranding"}}
+                            }
+                        },
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {"description": "Missing `embed:keys`"},
+                    },
+                },
+                "put": {
+                    "tags": ["Embed"],
+                    "summary": "Update widget title, welcome text, contact gate",
+                    "operationId": "putTenantEmbedBranding",
+                    "security": [{"SessionCookie": []}],
+                    "requestBody": {
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/TenantEmbedBrandingPut"}}
+                        }
+                    },
+                    "responses": {
+                        "200": {"description": "`{ ok: true }`"},
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {"description": "Missing `embed:keys`"},
+                    },
+                },
+            },
+            "/api/v1/tenant/embed-visitor-leads": {
+                "get": {
+                    "tags": ["Embed"],
+                    "summary": "List embed visitor submissions",
+                    "description": "Requires `embed:keys`. Newest first.",
+                    "operationId": "listEmbedVisitorLeads",
+                    "security": [{"SessionCookie": []}],
+                    "parameters": [
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "schema": {"type": "integer", "default": 50, "maximum": 500},
+                            "description": "Page size (1–500)",
+                        },
+                        {
+                            "name": "offset",
+                            "in": "query",
+                            "schema": {"type": "integer", "default": 0},
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {"schema": {"$ref": "#/components/schemas/EmbedVisitorLeadsList"}}
+                            }
+                        },
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {"description": "Missing `embed:keys`"},
+                    },
+                }
+            },
+            "/api/v1/tenant/embed-visitor-leads/export": {
+                "get": {
+                    "tags": ["Embed"],
+                    "summary": "Export visitor submissions as CSV",
+                    "description": "Requires `embed:keys`. Up to 10000 most recent rows.",
+                    "operationId": "exportEmbedVisitorLeadsCsv",
+                    "security": [{"SessionCookie": []}],
+                    "responses": {
+                        "200": {
+                            "description": "UTF-8 CSV attachment",
+                            "content": {"text/csv": {"schema": {"type": "string", "format": "binary"}}},
+                        },
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {"description": "Missing `embed:keys`"},
+                    },
                 }
             },
             "/upload-document": {

@@ -20,7 +20,7 @@
     },
     embed: {
       title: "Embed",
-      desc: "Mint API keys and paste the widget snippet on customer websites.",
+      desc: "Snippet, branding, visitor submissions, keys, CORS.",
     },
     team: {
       title: "Team",
@@ -743,6 +743,44 @@
       '<!-- Change general to your KB slug(s), comma-separated, or remove data-collection-ids when the embed key already restricts collections (omit for all collections when key is unrestricted). -->';
   }
 
+  async function loadEmbedBrandingForm() {
+    const nameEl = document.getElementById("embed-brand-agent-name");
+    const welcomeEl = document.getElementById("embed-brand-welcome");
+    const cb = document.getElementById("embed-brand-collect-contact");
+    const nEl = document.getElementById("embed-brand-engagement-count");
+    if (!nameEl || !welcomeEl) return;
+    try {
+      const d = await apiFetch("/api/v1/tenant/embed-branding");
+      nameEl.value = d.embed_agent_display_name || "";
+      welcomeEl.value = d.embed_welcome_message || "";
+      if (cb) cb.checked = d.embed_collect_visitor_contact !== false;
+      if (nEl) nEl.textContent = String(d.embed_engagement_count ?? 0);
+    } catch {
+      if (nEl) nEl.textContent = "—";
+    }
+  }
+
+  document.getElementById("embed-branding-save")?.addEventListener("click", async () => {
+    const nameEl = document.getElementById("embed-brand-agent-name");
+    const welcomeEl = document.getElementById("embed-brand-welcome");
+    const cb = document.getElementById("embed-brand-collect-contact");
+    try {
+      await apiFetch("/api/v1/tenant/embed-branding", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          embed_agent_display_name: (nameEl && nameEl.value) || "",
+          embed_welcome_message: (welcomeEl && welcomeEl.value) || "",
+          embed_collect_visitor_contact: !!(cb && cb.checked),
+        }),
+      });
+      toast("Widget settings saved", "success");
+      await loadEmbedBrandingForm();
+    } catch (e) {
+      toast(e.message || "Save failed", "error");
+    }
+  });
+
   let embedKeysSnapshot = [];
 
   function parseOriginsInput(raw) {
@@ -878,11 +916,132 @@
     }
   }
 
+  const EMBED_LEADS_PAGE = 50;
+  let embedLeadsOffset = 0;
+
+  async function refreshEmbedVisitorLeads(retryOnOverrun) {
+    const tbody = document.getElementById("embed-leads-body");
+    const meta = document.getElementById("embed-leads-meta");
+    const prev = document.getElementById("embed-leads-prev");
+    const next = document.getElementById("embed-leads-next");
+    if (!tbody) return;
+    tbody.innerHTML =
+      '<tr><td colspan="6" class="muted center">Loading…</td></tr>';
+    try {
+      const qs = new URLSearchParams({
+        limit: String(EMBED_LEADS_PAGE),
+        offset: String(embedLeadsOffset),
+      });
+      const data = await apiFetch(
+        "/api/v1/tenant/embed-visitor-leads?" + qs.toString()
+      );
+      let total = data.total ?? 0;
+      let leads = data.leads || [];
+      if (retryOnOverrun !== false && total > 0 && embedLeadsOffset >= total) {
+        embedLeadsOffset =
+          Math.max(
+            0,
+            Math.floor((total - 1) / EMBED_LEADS_PAGE) * EMBED_LEADS_PAGE
+          );
+        return refreshEmbedVisitorLeads(false);
+      }
+      const start = total === 0 ? 0 : embedLeadsOffset + 1;
+      const end = embedLeadsOffset + leads.length;
+      if (meta) {
+        meta.textContent = total
+          ? "Showing " + start + "–" + end + " of " + total
+          : "No submissions yet.";
+      }
+      if (prev) prev.disabled = embedLeadsOffset <= 0;
+      if (next)
+        next.disabled = embedLeadsOffset + leads.length >= total;
+
+      if (!leads.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="6" class="muted center">' +
+          (total ? "No rows on this page." : "No submissions yet.") +
+          "</td></tr>";
+        return;
+      }
+      tbody.innerHTML = leads
+        .map((row) => {
+          const msg = row.initial_message || "";
+          const msgShort =
+            msg.length > 120 ? msg.slice(0, 117) + "…" : msg;
+          const keyLabel =
+            row.embed_key_name || row.embed_key_id || "—";
+          return (
+            "<tr>" +
+            '<td><span style="font-size:0.82rem">' +
+            escapeHtml(row.created_at || "—") +
+            "</span></td>" +
+            "<td>" +
+            escapeHtml(row.name || "") +
+            "</td>" +
+            "<td>" +
+            escapeHtml(row.email || "") +
+            "</td>" +
+            "<td>" +
+            escapeHtml(row.phone || "") +
+            "</td>" +
+            '<td title="' +
+            escapeAttr(msg) +
+            '"><span style="font-size:0.82rem">' +
+            escapeHtml(msgShort) +
+            "</span></td>" +
+            '<td><span style="font-size:0.82rem">' +
+            escapeHtml(keyLabel) +
+            "</span></td>" +
+            "</tr>"
+          );
+        })
+        .join("");
+    } catch (e) {
+      tbody.innerHTML =
+        '<tr><td colspan="6" class="muted center">' +
+        escapeHtml(e.message || "Failed to load") +
+        "</td></tr>";
+      if (meta) meta.textContent = "—";
+      if (prev) prev.disabled = true;
+      if (next) next.disabled = true;
+    }
+  }
+
+  async function exportEmbedVisitorLeadsCsv() {
+    const res = await fetch("/api/v1/tenant/embed-visitor-leads/export", {
+      credentials: "same-origin",
+    });
+    if (res.status === 401) {
+      window.location.href =
+        "/login?next=" + encodeURIComponent(window.location.pathname);
+      return;
+    }
+    if (!res.ok) {
+      const data = await parseJsonResponse(res);
+      toast(data.error || data.message || "Export failed", "error");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "embed-visitor-leads.csv";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("Download started", "success");
+  }
+
   async function refreshEmbedPanel() {
     renderEmbedSnippetTemplate();
+    await loadEmbedBrandingForm();
     await populateEmbedAgentSelect();
     await populateEmbedCollectionMultiselect();
     await refreshEmbedKeysList();
+    embedLeadsOffset = 0;
+    await refreshEmbedVisitorLeads();
   }
 
   document.getElementById("btn-copy-embed-snippet")?.addEventListener("click", async () => {
@@ -899,6 +1058,33 @@
   document.getElementById("btn-refresh-embed-keys")?.addEventListener("click", () => {
     refreshEmbedKeysList().catch((e) =>
       toast(e.message || "Refresh failed", "error")
+    );
+  });
+
+  document.getElementById("btn-refresh-embed-leads")?.addEventListener("click", () => {
+    embedLeadsOffset = 0;
+    refreshEmbedVisitorLeads().catch((e) =>
+      toast(e.message || "Refresh failed", "error")
+    );
+  });
+
+  document.getElementById("btn-export-embed-leads")?.addEventListener("click", () => {
+    exportEmbedVisitorLeadsCsv().catch((e) =>
+      toast(e.message || "Export failed", "error")
+    );
+  });
+
+  document.getElementById("embed-leads-prev")?.addEventListener("click", () => {
+    embedLeadsOffset = Math.max(0, embedLeadsOffset - EMBED_LEADS_PAGE);
+    refreshEmbedVisitorLeads().catch((e) =>
+      toast(e.message || "Load failed", "error")
+    );
+  });
+
+  document.getElementById("embed-leads-next")?.addEventListener("click", () => {
+    embedLeadsOffset += EMBED_LEADS_PAGE;
+    refreshEmbedVisitorLeads().catch((e) =>
+      toast(e.message || "Load failed", "error")
     );
   });
 

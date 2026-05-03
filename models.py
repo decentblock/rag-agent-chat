@@ -50,6 +50,30 @@ class Tenant(db.Model):
     # JSON array of agent_id strings; when null/empty string, plan_catalog allowlist applies as-is.
     # Non-empty JSON overrides allowed agents for this tenant (whitelist).
     allowed_agent_ids_json = db.Column(db.Text, nullable=True)
+    # Embeddable widget copy & analytics (org admins edit via console Embed panel).
+    embed_agent_display_name = db.Column(db.String(255), nullable=True)
+    embed_welcome_message = db.Column(db.Text, nullable=True)
+    embed_collect_visitor_contact = db.Column(db.Boolean, default=True, nullable=False)
+    embed_engagement_count = db.Column(db.Integer, nullable=False, default=0)
+
+
+class EmbedVisitorLead(db.Model):
+    """Visitor identity captured by embed widget before chat (when enabled on tenant)."""
+
+    __tablename__ = "embed_visitor_leads"
+
+    id = db.Column(db.String(36), primary_key=True, default=_uuid)
+    tenant_id = db.Column(db.String(36), db.ForeignKey("tenants.id"), nullable=False, index=True)
+    embed_key_id = db.Column(db.String(36), db.ForeignKey("api_keys.id"), nullable=True, index=True)
+    visitor_session = db.Column(db.String(160), nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    phone = db.Column(db.String(64), nullable=True)
+    initial_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    tenant = db.relationship("Tenant", backref=db.backref("embed_visitor_leads", lazy="dynamic"))
+    embed_key = db.relationship("ApiKey", backref=db.backref("visitor_leads", lazy="dynamic"))
 
 
 class Permission(db.Model):

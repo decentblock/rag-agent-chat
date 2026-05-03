@@ -6,6 +6,7 @@
  *     data-base-url="https://YOUR-NEXURA-HOST"
  *     data-collection-ids="general,support"></script>
  * Optional data-collection-ids: comma/space-separated KB slugs or UUIDs (must fall within embed key scope).
+ * Org-managed agent title, welcome message, and visitor contact form are loaded from GET /api/embed/widget-config.
  */
 (function () {
   "use strict";
@@ -15,7 +16,7 @@
 
   var apiKey = (script.getAttribute("data-api-key") || "").trim();
   var baseUrl = (script.getAttribute("data-base-url") || "").replace(/\/$/, "");
-  var title = (script.getAttribute("data-title") || "Ask us").trim();
+  var titleFallback = (script.getAttribute("data-title") || "Ask us").trim();
   var accent = (script.getAttribute("data-accent") || "#0f766e").trim();
   var collRaw = (script.getAttribute("data-collection-ids") || "").trim();
   var collectionIds = collRaw
@@ -30,21 +31,40 @@
     return;
   }
 
-  var storageKey = "nexura_visitor_" + apiKey.slice(-16);
+  var storageKeySuffix = apiKey.slice(-16);
+  var visitorStorageKey = "nexura_visitor_" + storageKeySuffix;
+  var leadDoneStorageKey = "nexura_lead_ok_" + storageKeySuffix;
+
   function visitorId() {
     try {
-      var v = localStorage.getItem(storageKey);
+      var v = localStorage.getItem(visitorStorageKey);
       if (!v) {
         v =
           "v_" +
           Math.random().toString(36).slice(2) +
           "_" +
           Date.now().toString(36);
-        localStorage.setItem(storageKey, v);
+        localStorage.setItem(visitorStorageKey, v);
       }
       return v;
     } catch {
       return "sess_" + Math.random().toString(36).slice(2);
+    }
+  }
+
+  function leadGatePassed() {
+    try {
+      return localStorage.getItem(leadDoneStorageKey) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function markLeadGatePassed() {
+    try {
+      localStorage.setItem(leadDoneStorageKey, "1");
+    } catch {
+      /* ignore */
     }
   }
 
@@ -55,22 +75,35 @@
     accent +
     ";color:#fff;font-size:1.35rem;line-height:1;display:flex;align-items:center;justify-content:center}" +
     ".nexura-launcher:hover{filter:brightness(1.06)}" +
-    ".nexura-panel{position:fixed;bottom:5.5rem;right:1.25rem;z-index:2147483000;width:min(100vw - 2rem,380px);height:min(100vh - 7rem,460px);background:#fff;border-radius:14px;box-shadow:0 12px 48px rgba(15,23,42,.15);border:1px solid #e2e8f0;display:none;flex-direction:column;overflow:hidden}" +
+    ".nexura-panel{position:fixed;bottom:5.5rem;right:1.25rem;z-index:2147483000;width:min(100vw - 2rem,380px);height:min(100vh - 7rem,520px);background:#fff;border-radius:14px;box-shadow:0 12px 48px rgba(15,23,42,.15);border:1px solid #e2e8f0;display:none;flex-direction:column;overflow:hidden}" +
     ".nexura-panel.open{display:flex}" +
-    ".nexura-head{padding:.85rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:.95rem;color:#0f172a;display:flex;justify-content:space-between;align-items:center;gap:.5rem}" +
+    ".nexura-head{padding:.85rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:.95rem;color:#0f172a;display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-shrink:0}" +
     ".nexura-close{background:transparent;border:none;font-size:1.25rem;line-height:1;cursor:pointer;color:#64748b;padding:.15rem}" +
+    ".nexura-body{flex:1;display:flex;flex-direction:column;min-height:0}" +
+    ".nexura-lead-wrap{padding:.75rem;display:none;flex-direction:column;gap:.55rem;flex:1;overflow-y:auto}" +
+    ".nexura-lead-wrap.nexura-show{display:flex}" +
+    ".nexura-lead-wrap label{font-size:.76rem;color:#334155;display:flex;flex-direction:column;gap:.2rem;font-weight:600}" +
+    ".nexura-lead-wrap input,.nexura-lead-wrap textarea{font-weight:400;border:1px solid #cbd5e1;border-radius:8px;padding:.45rem .55rem;font:inherit;font-size:.88rem}" +
+    ".nexura-lead-wrap .nexura-req{color:#b91c1c;font-weight:700}" +
+    ".nexura-lead-submit{margin-top:.25rem;padding:.55rem;border:none;border-radius:10px;background:" +
+    accent +
+    ";color:#fff;font-weight:600;cursor:pointer;font-size:.88rem}" +
+    ".nexura-lead-submit:disabled{opacity:.55;cursor:not-allowed}" +
+    ".nexura-main-wrap{display:none;flex-direction:column;flex:1;min-height:0}" +
+    ".nexura-main-wrap.nexura-show{display:flex}" +
     ".nexura-msgs{flex:1;overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;gap:.6rem;background:#fff}" +
     ".nexura-msg{max-width:92%;padding:.55rem .75rem;border-radius:10px;font-size:.88rem;line-height:1.45;white-space:pre-wrap;word-break:break-word}" +
     ".nexura-msg.u{align-self:flex-end;background:#ecfdf5;color:#0f172a;border:1px solid #99f6e4}" +
     ".nexura-msg.a{align-self:flex-start;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0}" +
     ".nexura-cites{font-size:.75rem;color:#64748b;margin-top:.35rem}" +
-    ".nexura-foot{padding:.65rem;border-top:1px solid #e2e8f0;display:flex;gap:.45rem;align-items:flex-end;background:#fafafa}" +
+    ".nexura-foot{padding:.65rem;border-top:1px solid #e2e8f0;display:flex;gap:.45rem;align-items:flex-end;background:#fafafa;flex-shrink:0}" +
     ".nexura-inp{flex:1;min-height:2.5rem;max-height:5rem;padding:.5rem .65rem;border:1px solid #cbd5e1;border-radius:10px;font:inherit;resize:none}" +
     ".nexura-send{padding:.5rem .85rem;border:none;border-radius:10px;background:" +
     accent +
     ";color:#fff;font-weight:600;cursor:pointer;font-size:.85rem}" +
     ".nexura-send:disabled{opacity:.55;cursor:not-allowed}" +
-    ".nexura-brand{font-size:.68rem;color:#94a3b8;text-align:center;padding:.25rem}";
+    ".nexura-brand{font-size:.68rem;color:#94a3b8;text-align:center;padding:.25rem;flex-shrink:0}" +
+    ".nexura-lead-err{color:#b91c1c;font-size:.78rem;margin:0}";
 
   var style = document.createElement("style");
   style.textContent = css;
@@ -82,10 +115,23 @@
     '<button type="button" class="nexura-launcher" aria-label="Open chat">💬</button>' +
     '<div class="nexura-panel" role="dialog" aria-label="Chat">' +
     '<div class="nexura-head"><span></span><button type="button" class="nexura-close" aria-label="Close">×</button></div>' +
+    '<div class="nexura-body">' +
+    '<div class="nexura-lead-wrap">' +
+    '<p class="muted nexura-lead-intro" style="margin:0;font-size:.82rem;color:#475569;line-height:1.45"></p>' +
+    '<label>Name <span class="nexura-req">*</span><input type="text" class="nexura-in-name" autocomplete="name" maxlength="255" /></label>' +
+    '<label>Email <span class="nexura-req">*</span><input type="email" class="nexura-in-email" autocomplete="email" maxlength="255" /></label>' +
+    '<label>Phone (optional)<input type="tel" class="nexura-in-phone" autocomplete="tel" maxlength="64" /></label>' +
+    '<label>Message (optional)<textarea class="nexura-in-msg" rows="2" maxlength="2000" placeholder="How can we help?"></textarea></label>' +
+    '<p class="nexura-lead-err" hidden></p>' +
+    '<button type="button" class="nexura-lead-submit">Continue to chat</button>' +
+    "</div>" +
+    '<div class="nexura-main-wrap">' +
     '<div class="nexura-msgs"></div>' +
     '<div class="nexura-foot">' +
     '<textarea class="nexura-inp" rows="1" placeholder="Message…"></textarea>' +
     '<button type="button" class="nexura-send">Send</button>' +
+    "</div>" +
+    "</div>" +
     "</div>" +
     '<div class="nexura-brand">Powered by Nexura</div>' +
     "</div>";
@@ -96,20 +142,114 @@
   var panel = root.querySelector(".nexura-panel");
   var headTitle = root.querySelector(".nexura-head span");
   var btnClose = root.querySelector(".nexura-close");
+  var leadWrap = root.querySelector(".nexura-lead-wrap");
+  var leadIntro = root.querySelector(".nexura-lead-intro");
+  var inName = root.querySelector(".nexura-in-name");
+  var inEmail = root.querySelector(".nexura-in-email");
+  var inPhone = root.querySelector(".nexura-in-phone");
+  var inLeadMsg = root.querySelector(".nexura-in-msg");
+  var leadErr = root.querySelector(".nexura-lead-err");
+  var btnLead = root.querySelector(".nexura-lead-submit");
+  var mainWrap = root.querySelector(".nexura-main-wrap");
   var msgs = root.querySelector(".nexura-msgs");
   var inp = root.querySelector(".nexura-inp");
   var btnSend = root.querySelector(".nexura-send");
 
-  headTitle.textContent = title;
+  var widgetCfg = {};
+  var cfgLoaded = false;
+  var welcomeShown = false;
+
+  function fetchWidgetConfig() {
+    return fetch(baseUrl + "/api/embed/widget-config", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer " + apiKey,
+      },
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, body: j };
+        });
+      })
+      .then(function (x) {
+        cfgLoaded = true;
+        if (x.ok && x.body && typeof x.body === "object") {
+          widgetCfg = x.body;
+        } else {
+          widgetCfg = {};
+        }
+        applyHeadTitle();
+        return widgetCfg;
+      })
+      .catch(function () {
+        cfgLoaded = true;
+        widgetCfg = {};
+        applyHeadTitle();
+        return widgetCfg;
+      });
+  }
+
+  function applyHeadTitle() {
+    var t =
+      (widgetCfg.agent_display_name && String(widgetCfg.agent_display_name).trim()) ||
+      titleFallback ||
+      "Ask us";
+    headTitle.textContent = t;
+  }
+
+  applyHeadTitle();
+  fetchWidgetConfig();
 
   function toggle(open) {
     panel.classList.toggle("open", open);
     launcher.setAttribute("aria-expanded", open ? "true" : "false");
   }
 
+  function syncLeadVsChatLayout() {
+    var collect = widgetCfg.collect_visitor_contact !== false;
+    var needLead = collect && !leadGatePassed();
+    leadWrap.classList.toggle("nexura-show", needLead);
+    mainWrap.classList.toggle("nexura-show", !needLead);
+    if (needLead) {
+      leadIntro.textContent =
+        "Please share your details so we can assist you. Name and email are required.";
+      inp.disabled = true;
+      btnSend.disabled = true;
+    } else {
+      inp.disabled = false;
+      btnSend.disabled = false;
+      maybeShowWelcome();
+    }
+  }
+
+  function maybeShowWelcome() {
+    if (welcomeShown) return;
+    var w = widgetCfg.welcome_message && String(widgetCfg.welcome_message).trim();
+    if (w) {
+      welcomeShown = true;
+      addMsg("assistant", w);
+    }
+  }
+
   launcher.addEventListener("click", function () {
-    toggle(!panel.classList.contains("open"));
+    var opening = !panel.classList.contains("open");
+    if (!opening) {
+      toggle(false);
+      return;
+    }
+    function finalizeOpen() {
+      toggle(true);
+      syncLeadVsChatLayout();
+      if (leadWrap.classList.contains("nexura-show")) {
+        inName.focus();
+      } else {
+        inp.focus();
+      }
+    }
+    if (cfgLoaded) finalizeOpen();
+    else fetchWidgetConfig().then(finalizeOpen);
   });
+
   btnClose.addEventListener("click", function () {
     toggle(false);
   });
@@ -175,7 +315,10 @@
         );
       })
       .catch(function () {
-        addMsg("assistant", "Network error. Check your connection and CORS settings.");
+        addMsg(
+          "assistant",
+          "Network error. Check your connection and CORS settings."
+        );
       })
       .finally(function () {
         btnSend.disabled = false;
@@ -188,5 +331,58 @@
       e.preventDefault();
       send();
     }
+  });
+
+  btnLead.addEventListener("click", function () {
+    leadErr.hidden = true;
+    leadErr.textContent = "";
+    var nm = (inName.value || "").trim();
+    var em = (inEmail.value || "").trim();
+    var ph = (inPhone.value || "").trim();
+    var lm = (inLeadMsg.value || "").trim();
+    if (!nm || !em) {
+      leadErr.textContent = "Name and email are required.";
+      leadErr.hidden = false;
+      return;
+    }
+    btnLead.disabled = true;
+    fetch(baseUrl + "/api/embed/visitor-contact", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + apiKey,
+      },
+      body: JSON.stringify({
+        visitor_session: visitorId(),
+        name: nm,
+        email: em,
+        phone: ph || undefined,
+        message: lm || undefined,
+      }),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, body: j };
+        });
+      })
+      .then(function (_ref2) {
+        var ok = _ref2.ok;
+        var data = _ref2.body;
+        if (!ok) {
+          leadErr.textContent = data.error || "Could not save your details.";
+          leadErr.hidden = false;
+          return;
+        }
+        markLeadGatePassed();
+        syncLeadVsChatLayout();
+        inp.focus();
+      })
+      .catch(function () {
+        leadErr.textContent = "Network error. Try again.";
+        leadErr.hidden = false;
+      })
+      .finally(function () {
+        btnLead.disabled = false;
+      });
   });
 })();

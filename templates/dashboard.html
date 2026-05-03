@@ -195,6 +195,72 @@
         </article>
 
         <article class="card card-elevated">
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">Widget appearance &amp; visitor form</h3>
+              <p class="muted card-lead">
+                Applies to every active embed key on this organisation. The widget loads these settings from the server (you do not need to change the script tag for title or welcome text).
+                <strong>Engagements</strong> counts each successful assistant reply from embedded chat.
+              </p>
+            </div>
+          </div>
+          <div class="grid-stack" style="gap:0.85rem;">
+            <label class="field">
+              <span class="field-label">Agent display name</span>
+              <input type="text" id="embed-brand-agent-name" class="input" maxlength="255" placeholder="e.g. ACME Support" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="field-label">Welcome message</span>
+              <textarea id="embed-brand-welcome" class="input textarea" rows="3" maxlength="8000" placeholder="Greeting visitors see after they continue past the contact form…"></textarea>
+            </label>
+            <label class="field" style="display:flex;align-items:flex-start;gap:0.5rem;">
+              <input type="checkbox" id="embed-brand-collect-contact" checked style="margin-top:0.2rem;" />
+              <span style="font-size:0.88rem;">Ask for contact details before chat <span class="muted">(name and email required · phone and message optional)</span></span>
+            </label>
+            <p class="muted" style="margin:0;font-size:0.85rem;">Embed engagements (all time): <strong id="embed-brand-engagement-count">—</strong></p>
+            <button type="button" class="btn btn-primary" id="embed-branding-save">Save widget settings</button>
+          </div>
+        </article>
+
+        <article class="card card-elevated">
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">Visitor submissions</h3>
+              <p class="muted card-lead">
+                Contacts captured when visitors complete the embed contact form (name and email required).
+                Export downloads up to 10,000 most recent rows as CSV.
+              </p>
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-embed-leads">Refresh</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-export-embed-leads">Export CSV</button>
+            </div>
+          </div>
+          <p id="embed-leads-meta" class="muted" style="margin:0 0 0.65rem;font-size:0.82rem;">—</p>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Created (UTC)</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Message</th>
+                  <th>Embed key</th>
+                </tr>
+              </thead>
+              <tbody id="embed-leads-body">
+                <tr><td colspan="6" class="muted center">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.65rem;">
+            <button type="button" class="btn btn-secondary btn-sm" id="embed-leads-prev" disabled>Previous</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="embed-leads-next" disabled>Next</button>
+          </div>
+        </article>
+
+        <article class="card card-elevated">
           <h3 class="card-title">Create embed key</h3>
           <p class="muted card-lead">
             Keys are scoped to this tenant. Optional collection restrict limits retrieval to selected KB
