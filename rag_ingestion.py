@@ -187,6 +187,7 @@ def list_documents_db(tenant_id: str, collection_slug: str) -> list[dict]:
         {
             "file_name": d.original_filename,
             "document_id": d.id,
+            "collection_slug": coll.slug,
             "module": d.module_tag,
             "indexed_chunk_count": int(d.indexed_chunk_count or 0),
             "indexed_at": d.indexed_at.isoformat() + "Z" if getattr(d, "indexed_at", None) else None,

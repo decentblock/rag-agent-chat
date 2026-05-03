@@ -959,3 +959,4 @@ var cat = "artificial-intelligence";
 			}
 </script> 
 </html>
+2026-05-03 21:39:44,250 | WARNING | rag_app | Default ADMIN_BOOTSTRAP_PASSWORD in use; set ADMIN_BOOTSTRAP_USERNAME/PASSWORD.

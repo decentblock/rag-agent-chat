@@ -10,7 +10,20 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from collections_service import normalize_collection_filter
 from extensions import db
-from models import ApiKey
+from models import ApiKey, Collection
+
+
+def collection_slugs_for_allowed_ids(tenant_id: str, ids: list[str]) -> list[str]:
+    """Map stored collection UUIDs to slugs (fallback to id if row missing)."""
+    if not ids:
+        return []
+    rows = (
+        Collection.query.filter_by(tenant_id=tenant_id)
+        .filter(Collection.id.in_(ids))
+        .all()
+    )
+    by_id = {r.id: r.slug for r in rows}
+    return [by_id.get(i, i) for i in ids]
 
 
 def mint_embed_key() -> tuple[str, str]:
@@ -135,12 +148,7 @@ def list_embed_keys_payload(tenant_id: str) -> list[dict[str, Any]]:
     )
     out: list[dict[str, Any]] = []
     for r in rows:
-        allowed = None
-        if r.allowed_collection_ids_json:
-            try:
-                allowed = json.loads(r.allowed_collection_ids_json)
-            except json.JSONDecodeError:
-                allowed = []
+        allowed = parse_allowed_ids(r)
         cfg = {}
         if r.agent_config_json:
             try:
@@ -149,6 +157,7 @@ def list_embed_keys_payload(tenant_id: str) -> list[dict[str, Any]]:
                     cfg = {}
             except json.JSONDecodeError:
                 cfg = {}
+        slug_labels = collection_slugs_for_allowed_ids(tenant_id, allowed) if allowed else None
         out.append(
             {
                 "id": r.id,
@@ -156,6 +165,7 @@ def list_embed_keys_payload(tenant_id: str) -> list[dict[str, Any]]:
                 "key_prefix": r.key_prefix,
                 "is_active": r.is_active,
                 "allowed_collection_ids": allowed,
+                "allowed_collection_slugs": slug_labels,
                 "allowed_embed_origins": parse_allowed_embed_origins(r),
                 "default_agent_id": r.default_agent_id,
                 "default_agent_config": cfg,
@@ -194,10 +204,18 @@ def parse_allowed_ids(row: ApiKey) -> list[str] | None:
     try:
         data = json.loads(row.allowed_collection_ids_json)
         if not isinstance(data, list):
-            return []
-        return [str(x) for x in data]
+            return None
+        out: list[str] = []
+        for x in data:
+            if x is None:
+                continue
+            s = str(x).strip()
+            if not s or s.lower() == "none":
+                continue
+            out.append(s)
+        return out if out else None
     except json.JSONDecodeError:
-        return []
+        return None
 
 
 def normalize_embed_collection_scope(

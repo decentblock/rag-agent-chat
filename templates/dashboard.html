@@ -126,19 +126,21 @@
               <option value="">— All collections (tenant‑wide) —</option>
             </select>
           </label>
+          <p id="library-collection-slug-hint" class="muted" style="font-size:0.82rem;margin:0.35rem 0 0;line-height:1.45;"></p>
 
           <div class="table-wrap">
             <table class="table" id="documents-table">
               <thead>
                 <tr>
                   <th>File</th>
+                  <th>Collection</th>
                   <th>Chunks</th>
                   <th>Module</th>
                   <th class="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="documents-body">
-                <tr><td colspan="4" class="muted center">Pick a collection to see rows.</td></tr>
+                <tr><td colspan="5" class="muted center">Pick a collection to see rows.</td></tr>
               </tbody>
             </table>
           </div>
@@ -238,13 +240,14 @@
                 <tr>
                   <th>Name</th>
                   <th>Prefix</th>
+                  <th>KB collections</th>
                   <th>Sites (origins)</th>
                   <th>Status</th>
                   <th class="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="embed-keys-body">
-                <tr><td colspan="5" class="muted center">Loading…</td></tr>
+                <tr><td colspan="6" class="muted center">Loading…</td></tr>
               </tbody>
             </table>
           </div>

@@ -26,6 +26,7 @@ from auth_service import authenticate_user
 from collections_service import (
     create_collection,
     find_collection,
+    list_chroma_physical_names,
     list_collections_payload,
     normalize_collection_filter,
 )
@@ -1140,6 +1141,17 @@ def embed_chat():
     )
     if scope_err:
         return jsonify({"error": scope_err}), 400
+
+    chroma_targets = list_chroma_physical_names(str(row.tenant_id), normalized)
+    logger.info(
+        "embed_chat_scope tenant=%s key_id=%s resolved_collection_uuids=%s chroma_physical=%s requested_raw=%s key_restrict=%s",
+        row.tenant_id,
+        row.id,
+        list(normalized),
+        chroma_targets,
+        list(requested),
+        allowed_from_key,
+    )
 
     visitor = str(payload.get("visitor_session") or "anon").strip()[:160] or "anon"
     session_key = f"embed:{row.id}:{visitor}"

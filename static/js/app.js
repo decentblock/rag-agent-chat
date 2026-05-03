@@ -739,7 +739,8 @@
       key +
       '"\n  data-base-url="' +
       o +
-      '"><\\/script>';
+      '"\n  data-collection-ids="general"></script>\n\n' +
+      '<!-- Change general to your KB slug(s), comma-separated, or remove data-collection-ids when the embed key already restricts collections (omit for all collections when key is unrestricted). -->';
   }
 
   let embedKeysSnapshot = [];
@@ -788,7 +789,9 @@
       const items = data.collections || [];
       items.forEach((item) => {
         const id = item.id || "";
-        const label = (item.name || item.slug || id) + " (" + (item.slug || "") + ")";
+        const slug = item.slug || "";
+        const label =
+          (item.name || slug || id) + (slug ? " · slug: " + slug : "");
         const o = document.createElement("option");
         o.value = id;
         o.textContent = label;
@@ -804,14 +807,14 @@
     const tbody = document.getElementById("embed-keys-body");
     if (!tbody) return;
     tbody.innerHTML =
-      '<tr><td colspan="5" class="muted center">Loading…</td></tr>';
+      '<tr><td colspan="6" class="muted center">Loading…</td></tr>';
     try {
       const data = await apiFetch("/api/v1/embed-keys");
       const keys = data.keys || [];
       embedKeysSnapshot = keys;
       if (!keys.length) {
         tbody.innerHTML =
-          '<tr><td colspan="5" class="muted center">No embed keys yet.</td></tr>';
+          '<tr><td colspan="6" class="muted center">No embed keys yet.</td></tr>';
         return;
       }
       tbody.innerHTML = keys
@@ -821,6 +824,16 @@
           const sites = Array.isArray(k.allowed_embed_origins)
             ? k.allowed_embed_origins
             : [];
+          let kbCell =
+            '<span class="muted">All collections</span>';
+          if (Array.isArray(k.allowed_collection_slugs) && k.allowed_collection_slugs.length) {
+            kbCell = escapeHtml(k.allowed_collection_slugs.join(", "));
+          } else if (
+            Array.isArray(k.allowed_collection_ids) &&
+            k.allowed_collection_ids.length
+          ) {
+            kbCell = escapeHtml(k.allowed_collection_ids.join(", "));
+          }
           const sitesLabel =
             sites.length === 0
               ? '<span class="muted">Platform default</span>'
@@ -843,7 +856,9 @@
             escapeHtml(k.name || "") +
             "</td><td><code>" +
             escapeHtml(k.key_prefix || "") +
-            "</code></td><td style=\"max-width:14rem;word-break:break-word;font-size:0.82rem\">" +
+            "</code></td><td style=\"max-width:12rem;word-break:break-word;font-size:0.82rem\">" +
+            kbCell +
+            '</td><td style="max-width:12rem;word-break:break-word;font-size:0.82rem">' +
             sitesLabel +
             '</td><td><span class="badge ' +
             badge +
@@ -857,7 +872,7 @@
         .join("");
     } catch (e) {
       tbody.innerHTML =
-        '<tr><td colspan="5" class="muted center">' +
+        '<tr><td colspan="6" class="muted center">' +
         escapeHtml(e.message || "Failed to load keys") +
         "</td></tr>";
     }
@@ -1068,6 +1083,23 @@
     }
   }
 
+  function syncLibraryCollectionSlugHint() {
+    const el = document.getElementById("library-collection-slug-hint");
+    if (!el || !collectionSelect) return;
+    const slug = collectionSelect.value.trim();
+    if (!slug) {
+      el.innerHTML =
+        '<strong>Tenant-wide</strong> chat searches every KB collection when this dropdown is empty. Pick a collection to list documents here. Match external sites with embed <code>data-collection-ids</code> slugs when needed.';
+      return;
+    }
+    el.innerHTML =
+      'Listing slug <strong>' +
+      escapeHtml(slug) +
+      '</strong> · optional embed override: <code>data-collection-ids="' +
+      escapeHtml(slug) +
+      '"</code>';
+  }
+
   async function loadCollections(preserveSelection) {
     const prev = preserveSelection ? collectionSelect?.value : "";
     const data = await apiFetch("/api/collections");
@@ -1093,15 +1125,17 @@
     );
     if (prev && slugs.includes(prev)) collectionSelect.value = prev;
     else collectionSelect.value = "";
+    syncLibraryCollectionSlugHint();
     await loadDocumentsForSelection();
   }
 
   async function loadDocumentsForSelection() {
     if (!documentsBody || !collectionSelect) return;
+    syncLibraryCollectionSlugHint();
     const name = collectionSelect.value.trim();
     if (!name) {
       documentsBody.innerHTML =
-        '<tr><td colspan="4" class="muted center">Choose a collection to list documents (tenant-wide chat works without selecting).</td></tr>';
+        '<tr><td colspan="5" class="muted center">Choose a collection to list documents (tenant-wide chat works without selecting).</td></tr>';
       return;
     }
     try {
@@ -1112,7 +1146,7 @@
       const docs = data.documents || [];
       if (!docs.length) {
         documentsBody.innerHTML =
-          '<tr><td colspan="4" class="muted center">No documents in this collection.</td></tr>';
+          '<tr><td colspan="5" class="muted center">No documents in this collection.</td></tr>';
         return;
       }
       documentsBody.innerHTML = docs
@@ -1122,8 +1156,10 @@
           const nchunks =
             d.indexed_chunk_count != null ? String(d.indexed_chunk_count) : "—";
           const docId = d.document_id || "";
+          const cslug = d.collection_slug || name || "—";
           return `<tr data-file="${escapeAttr(fn)}">
             <td>${escapeHtml(fn)}</td>
+            <td><code>${escapeHtml(cslug)}</code></td>
             <td><code>${escapeHtml(nchunks)}</code></td>
             <td>${escapeHtml(mod)}</td>
             <td class="col-actions"><div class="row-actions">
@@ -1136,7 +1172,7 @@
         .join("");
     } catch (e) {
       documentsBody.innerHTML =
-        '<tr><td colspan="4" class="muted center">' +
+        '<tr><td colspan="5" class="muted center">' +
         escapeHtml(e.message || String(e)) +
         "</td></tr>";
       toast(e.message || "Failed to load documents", "error");

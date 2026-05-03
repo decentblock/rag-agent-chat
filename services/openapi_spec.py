@@ -91,7 +91,7 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                         "collection_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Optional collection UUIDs to scope retrieval.",
+                            "description": "Optional collection UUIDs or slugs to scope retrieval.",
                         },
                         "llm_route": {"type": "string", "default": "platform_llm"},
                         "llm_config_ref": {},
@@ -115,7 +115,11 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                         "visitor_session": {"type": "string", "description": "Visitor id for memory partitioning."},
                         "agent_id": {"type": "string"},
                         "agent_config": {"type": "object", "additionalProperties": True},
-                        "collection_ids": {"type": "array", "items": {"type": "string"}},
+                        "collection_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional KB collection UUIDs or slugs (embed key scope still applies). Omit for full key scope.",
+                        },
                         "llm_route": {"type": "string"},
                         "llm_config_ref": {},
                         "client_hint": {},

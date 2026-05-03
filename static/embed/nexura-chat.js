@@ -3,7 +3,9 @@
  * Include once per page:
  *   <script defer src="https://YOUR-NEXURA-HOST/static/embed/nexura-chat.js"
  *     data-api-key="nxemb_..."
- *     data-base-url="https://YOUR-NEXURA-HOST"></script>
+ *     data-base-url="https://YOUR-NEXURA-HOST"
+ *     data-collection-ids="general,support"></script>
+ * Optional data-collection-ids: comma/space-separated KB slugs or UUIDs (must fall within embed key scope).
  */
 (function () {
   "use strict";
@@ -15,6 +17,12 @@
   var baseUrl = (script.getAttribute("data-base-url") || "").replace(/\/$/, "");
   var title = (script.getAttribute("data-title") || "Ask us").trim();
   var accent = (script.getAttribute("data-accent") || "#0f766e").trim();
+  var collRaw = (script.getAttribute("data-collection-ids") || "").trim();
+  var collectionIds = collRaw
+    ? collRaw.split(/[\s,]+/).map(function (s) {
+        return s.trim();
+      }).filter(Boolean)
+    : [];
   if (!/^#[0-9a-fA-F]{6}$/.test(accent)) accent = "#0f766e";
 
   if (!apiKey || !baseUrl) {
@@ -133,10 +141,15 @@
         "Content-Type": "application/json",
         Authorization: "Bearer " + apiKey,
       },
-      body: JSON.stringify({
-        chat_message: text,
-        visitor_session: visitorId(),
-      }),
+      body: JSON.stringify(
+        Object.assign(
+          {
+            chat_message: text,
+            visitor_session: visitorId(),
+          },
+          collectionIds.length ? { collection_ids: collectionIds } : {}
+        )
+      ),
     })
       .then(function (r) {
         return r.json().then(function (j) {
