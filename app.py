@@ -273,6 +273,11 @@ def _ensure_api_keys_columns() -> None:
         "ALTER TABLE api_keys ADD COLUMN created_at DATETIME",
         "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS created_at TIMESTAMP",
     )
+    add(
+        "allowed_embed_origins_json",
+        "ALTER TABLE api_keys ADD COLUMN allowed_embed_origins_json TEXT",
+        "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS allowed_embed_origins_json TEXT",
+    )
 
     for sql in stmts:
         db.session.execute(text(sql))
@@ -1057,6 +1062,12 @@ def embed_chat():
     if not row:
         return jsonify({"error": "Invalid or inactive embed API key"}), 401
 
+    origin_hdr = request.headers.get("Origin")
+    from services.embed_cors_settings import validate_embed_post_origin
+
+    if not validate_embed_post_origin(origin_hdr, row):
+        return jsonify({"error": "Origin not allowed for this embed key"}), 403
+
     tenant_row = Tenant.query.filter_by(id=str(row.tenant_id)).first()
     if not tenant_row:
         return jsonify({"error": "Tenant not found"}), 500
@@ -1137,7 +1148,12 @@ def list_embed_keys_route():
 @login_required
 @permission_required("embed:keys")
 def create_embed_key_route():
-    from services.embed_key_service import create_embed_api_key, parse_allowed_ids
+    from services.embed_key_service import (
+        create_embed_api_key,
+        normalize_allowed_embed_origins_payload,
+        parse_allowed_embed_origins,
+        parse_allowed_ids,
+    )
     from services.plan_enforcement import agent_allowed_on_plan, check_can_add_embed_key
 
     body = request.get_json(force=True, silent=True) or {}
@@ -1162,6 +1178,13 @@ def create_embed_key_route():
     if dac is not None and not isinstance(dac, dict):
         return jsonify({"error": "default_agent_config must be an object"}), 400
 
+    embed_origins_kw: dict = {}
+    if "allowed_embed_origins" in body:
+        norm_o, oerr = normalize_allowed_embed_origins_payload(body.get("allowed_embed_origins"))
+        if oerr:
+            return jsonify({"error": oerr}), 400
+        embed_origins_kw["allowed_embed_origins"] = norm_o
+
     try:
         row, secret = create_embed_api_key(
             str(g.tenant.id),
@@ -1169,6 +1192,7 @@ def create_embed_key_route():
             allowed_collection_ids=body.get("allowed_collection_ids"),
             default_agent_id=daid or None,
             default_agent_config=dac if isinstance(dac, dict) else {},
+            **embed_origins_kw,
         )
         db.session.commit()
         return (
@@ -1178,6 +1202,7 @@ def create_embed_key_route():
                     "api_key": secret,
                     "key_prefix": row.key_prefix,
                     "allowed_collection_ids": parse_allowed_ids(row),
+                    "allowed_embed_origins": parse_allowed_embed_origins(row),
                 }
             ),
             201,
@@ -1185,6 +1210,34 @@ def create_embed_key_route():
     except ValueError as ve:
         db.session.rollback()
         return jsonify({"error": str(ve)}), 400
+
+
+@app.route("/api/v1/embed-keys/<key_id>", methods=["PATCH"])
+@login_required
+@permission_required("embed:keys")
+def patch_embed_key_route(key_id: str):
+    from services.embed_key_service import parse_allowed_embed_origins, update_embed_key_origins
+
+    body = request.get_json(force=True, silent=True) or {}
+    if "allowed_embed_origins" not in body:
+        return (
+            jsonify(
+                {
+                    "error": "allowed_embed_origins required (JSON array of https:// origins, or [] for platform default)"
+                }
+            ),
+            400,
+        )
+
+    ok, err = update_embed_key_origins(
+        str(g.tenant.id), key_id, body.get("allowed_embed_origins")
+    )
+    if not ok:
+        status = 404 if err == "Key not found" else 400
+        return jsonify({"error": err or "Update failed"}), status
+
+    row = ApiKey.query.filter_by(id=key_id, tenant_id=str(g.tenant.id)).first()
+    return jsonify({"ok": True, "allowed_embed_origins": parse_allowed_embed_origins(row)}), 200
 
 
 @app.route("/api/v1/embed-keys/<key_id>", methods=["DELETE"])

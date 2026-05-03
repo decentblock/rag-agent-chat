@@ -742,6 +742,17 @@
       '"><\\/script>';
   }
 
+  let embedKeysSnapshot = [];
+
+  function parseOriginsInput(raw) {
+    const s = (raw || "").trim();
+    if (!s) return [];
+    return s
+      .split(/[\n,]+/)
+      .map((x) => x.trim().replace(/\/+$/, ""))
+      .filter(Boolean);
+  }
+
   async function populateEmbedAgentSelect() {
     const sel = document.getElementById("embed-key-agent");
     if (!sel) return;
@@ -793,41 +804,60 @@
     const tbody = document.getElementById("embed-keys-body");
     if (!tbody) return;
     tbody.innerHTML =
-      '<tr><td colspan="4" class="muted center">Loading…</td></tr>';
+      '<tr><td colspan="5" class="muted center">Loading…</td></tr>';
     try {
       const data = await apiFetch("/api/v1/embed-keys");
       const keys = data.keys || [];
+      embedKeysSnapshot = keys;
       if (!keys.length) {
         tbody.innerHTML =
-          '<tr><td colspan="4" class="muted center">No embed keys yet.</td></tr>';
+          '<tr><td colspan="5" class="muted center">No embed keys yet.</td></tr>';
         return;
       }
       tbody.innerHTML = keys
         .map((k) => {
           const active = k.is_active ? "Active" : "Revoked";
           const badge = k.is_active ? "badge-accent" : "badge-soon";
+          const sites = Array.isArray(k.allowed_embed_origins)
+            ? k.allowed_embed_origins
+            : [];
+          const sitesLabel =
+            sites.length === 0
+              ? '<span class="muted">Platform default</span>'
+              : escapeHtml(sites.slice(0, 2).join(", ")) +
+                (sites.length > 2 ? " …" : "");
+          const btnSites =
+            '<button type="button" class="btn btn-secondary btn-sm btn-edit-embed-origins" data-id="' +
+            escapeAttr(k.id) +
+            '">Sites</button>';
+          const btnRevoke =
+            '<button type="button" class="btn btn-ghost btn-sm btn-revoke-embed" data-id="' +
+            escapeAttr(k.id) +
+            '">Revoke</button>';
+          const actions =
+            k.is_active
+              ? '<div class="row-actions">' + btnSites + " " + btnRevoke + "</div>"
+              : "—";
           return (
             "<tr><td>" +
             escapeHtml(k.name || "") +
             "</td><td><code>" +
             escapeHtml(k.key_prefix || "") +
-            "</code></td><td><span class=\"badge " +
+            "</code></td><td style=\"max-width:14rem;word-break:break-word;font-size:0.82rem\">" +
+            sitesLabel +
+            '</td><td><span class="badge ' +
             badge +
-            "\">" +
+            '">' +
             escapeHtml(active) +
-            "</span></td><td>" +
-            (k.is_active
-              ? '<button type="button" class="btn btn-secondary btn-sm btn-revoke-embed" data-id="' +
-                escapeAttr(k.id) +
-                '">Revoke</button>'
-              : "—") +
+            '</span></td><td class="col-actions">' +
+            actions +
             "</td></tr>"
           );
         })
         .join("");
     } catch (e) {
       tbody.innerHTML =
-        '<tr><td colspan="4" class="muted center">' +
+        '<tr><td colspan="5" class="muted center">' +
         escapeHtml(e.message || "Failed to load keys") +
         "</td></tr>";
     }
@@ -858,10 +888,28 @@
   });
 
   document.getElementById("embed-keys-body")?.addEventListener("click", async (ev) => {
-    const btn =
-      ev.target && ev.target.closest && ev.target.closest(".btn-revoke-embed");
-    if (!btn) return;
-    const id = btn.getAttribute("data-id");
+    const editBtn = ev.target.closest && ev.target.closest(".btn-edit-embed-origins");
+    if (editBtn) {
+      const id = editBtn.getAttribute("data-id");
+      const k = embedKeysSnapshot.find((x) => x.id === id);
+      const dlg = document.getElementById("embed-origins-dialog");
+      const hid = document.getElementById("embed-origins-key-id");
+      const ta = document.getElementById("embed-origins-textarea");
+      const title = document.getElementById("embed-origins-dialog-title");
+      if (!dlg || !hid || !ta || !k) return;
+      hid.value = id;
+      if (title) title.textContent = "Sites · " + (k.name || k.key_prefix || "");
+      ta.value = Array.isArray(k.allowed_embed_origins)
+        ? k.allowed_embed_origins.join("\n")
+        : "";
+      dlg.showModal();
+      ta.focus();
+      return;
+    }
+
+    const revokeBtn = ev.target.closest && ev.target.closest(".btn-revoke-embed");
+    if (!revokeBtn) return;
+    const id = revokeBtn.getAttribute("data-id");
     if (!id || !confirm("Revoke this embed key? Sites using it will stop working."))
       return;
     try {
@@ -881,6 +929,7 @@
     const agentEl = document.getElementById("embed-key-agent");
     const collEl = document.getElementById("embed-key-collections");
     const note = document.getElementById("embed-key-created");
+    const originsTa = document.getElementById("embed-key-origins");
     const name = (nameEl && nameEl.value.trim()) || "";
     if (!name) return;
 
@@ -894,6 +943,8 @@
     if (agentEl && agentEl.value.trim())
       body.default_agent_id = agentEl.value.trim();
     if (ids.length) body.allowed_collection_ids = ids;
+    const olist = originsTa ? parseOriginsInput(originsTa.value) : [];
+    if (olist.length) body.allowed_embed_origins = olist;
 
     try {
       const data = await apiFetch("/api/v1/embed-keys", {
@@ -910,11 +961,48 @@
         }
         toast("Embed key created", "success");
         if (nameEl) nameEl.value = "";
+        if (originsTa) originsTa.value = "";
         await refreshEmbedKeysList();
       }
     } catch (e) {
       toast(e.message || "Create failed", "error");
     }
+  });
+
+  function closeEmbedOriginsDialog() {
+    document.getElementById("embed-origins-dialog")?.close();
+  }
+
+  document.getElementById("embed-origins-dialog-save")?.addEventListener("click", async () => {
+    const hid = document.getElementById("embed-origins-key-id");
+    const ta = document.getElementById("embed-origins-textarea");
+    const id = hid && hid.value;
+    if (!id || !ta) return;
+    const list = parseOriginsInput(ta.value);
+    try {
+      await apiFetch("/api/v1/embed-keys/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowed_embed_origins: list }),
+      });
+      toast("Sites updated", "success");
+      closeEmbedOriginsDialog();
+      await refreshEmbedKeysList();
+    } catch (e) {
+      toast(e.message || "Save failed", "error");
+    }
+  });
+
+  document.getElementById("embed-origins-dialog-cancel")?.addEventListener(
+    "click",
+    closeEmbedOriginsDialog
+  );
+  document.getElementById("embed-origins-dialog-close")?.addEventListener(
+    "click",
+    closeEmbedOriginsDialog
+  );
+  document.getElementById("embed-origins-dialog")?.addEventListener("click", (ev) => {
+    if (ev.target.id === "embed-origins-dialog") closeEmbedOriginsDialog();
   });
 
   /* Library */

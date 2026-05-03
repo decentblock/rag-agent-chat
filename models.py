@@ -188,6 +188,8 @@ class ApiKey(db.Model):
     key_prefix = db.Column(db.String(32), nullable=False, unique=True, index=True)
     key_hash = db.Column(db.String(255), nullable=False)
     allowed_collection_ids_json = db.Column(db.Text, nullable=True)
+    # JSON array of https:// origins allowed for browser embed when using this key; empty/null → platform embed CORS (env / super settings).
+    allowed_embed_origins_json = db.Column(db.Text, nullable=True)
     default_agent_id = db.Column(db.String(64), nullable=True)
     agent_config_json = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)

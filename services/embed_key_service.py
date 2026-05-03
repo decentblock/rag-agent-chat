@@ -38,6 +38,40 @@ def validate_allowed_collections_for_tenant(
     return list(normalized), None
 
 
+def parse_allowed_embed_origins(row: ApiKey) -> list[str]:
+    raw = getattr(row, "allowed_embed_origins_json", None)
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            return []
+        return [str(x).strip().rstrip("/") for x in data if str(x).strip()]
+    except json.JSONDecodeError:
+        return []
+
+
+def normalize_allowed_embed_origins_payload(raw: list | None) -> tuple[list[str] | None, str | None]:
+    """Normalize list from JSON body; empty list → None (store null → platform default CORS)."""
+    if raw is None:
+        return None, None
+    if not isinstance(raw, list):
+        return None, "allowed_embed_origins must be an array of strings"
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in raw:
+        s = str(item).strip().rstrip("/")
+        if not s:
+            continue
+        low = s.lower()
+        if not (low.startswith("http://") or low.startswith("https://")):
+            return None, f"Invalid origin (use https://… or http://…): {s}"
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return (out if out else None), None
+
+
 def create_embed_api_key(
     tenant_id: str,
     *,
@@ -45,6 +79,7 @@ def create_embed_api_key(
     allowed_collection_ids: list[str] | None,
     default_agent_id: str | None,
     default_agent_config: dict[str, Any] | None,
+    allowed_embed_origins: list[str] | None = None,
 ) -> tuple[ApiKey, str]:
     """Persist key; returns (row, plaintext_secret_shown_once)."""
     allowed_norm, err = validate_allowed_collections_for_tenant(tenant_id, allowed_collection_ids)
@@ -58,6 +93,9 @@ def create_embed_api_key(
         key_prefix=prefix,
         key_hash=generate_password_hash(full),
         allowed_collection_ids_json=json.dumps(allowed_norm) if allowed_norm else None,
+        allowed_embed_origins_json=(
+            json.dumps(allowed_embed_origins) if allowed_embed_origins else None
+        ),
         default_agent_id=(default_agent_id or "").strip().lower() or None,
         agent_config_json=json.dumps(default_agent_config or {}),
         is_active=True,
@@ -65,6 +103,19 @@ def create_embed_api_key(
     db.session.add(row)
     db.session.flush()
     return row, full
+
+
+def update_embed_key_origins(tenant_id: str, key_id: str, origins: list | None) -> tuple[bool, str | None]:
+    """Set allowed_embed_origins_json from normalized list (None clears → platform default)."""
+    row = ApiKey.query.filter_by(id=key_id, tenant_id=tenant_id).first()
+    if not row:
+        return False, "Key not found"
+    norm, err = normalize_allowed_embed_origins_payload(origins)
+    if err:
+        return False, err
+    row.allowed_embed_origins_json = json.dumps(norm) if norm else None
+    db.session.commit()
+    return True, None
 
 
 def revoke_embed_api_key(tenant_id: str, key_id: str) -> bool:
@@ -105,6 +156,7 @@ def list_embed_keys_payload(tenant_id: str) -> list[dict[str, Any]]:
                 "key_prefix": r.key_prefix,
                 "is_active": r.is_active,
                 "allowed_collection_ids": allowed,
+                "allowed_embed_origins": parse_allowed_embed_origins(r),
                 "default_agent_id": r.default_agent_id,
                 "default_agent_config": cfg,
                 "created_at": r.created_at.isoformat() + "Z",

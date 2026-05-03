@@ -96,7 +96,7 @@
                 <label for="embed_cors_origins">Allowed browser origins</label>
                 <textarea class="input" id="embed_cors_origins" name="embed_cors_origins" rows="4" autocomplete="off" style="font-family:monospace;font-size:0.85rem;">{{ embed_cors_origins }}</textarea>
                 <span class="super-hint">
-                  Comma-separated <code>https://…</code> origins where the snippet is embedded (must match the browser’s <code>Origin</code> exactly — include <code>www</code> and apex variants if both are used).
+                  Comma-separated <code>https://…</code> origins where any embed snippet may call the API when a key does <strong>not</strong> define its own sites (Embed tab → per-key list).
                   Use <code>*</code> only for local testing. Clear the field and save to drop the database override and use env <code>EMBED_CORS_ORIGINS</code> from the server.
                   Env reference: <code>{{ embed_cors_env_hint }}</code>
                 </span>

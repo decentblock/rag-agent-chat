@@ -290,6 +290,11 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                                         },
                                         "default_agent_id": {"type": "string"},
                                         "default_agent_config": {"type": "object"},
+                                        "allowed_embed_origins": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Optional per-key browser Origin allow-list; omit for platform default",
+                                        },
                                     },
                                     "required": ["name"],
                                 }
@@ -300,6 +305,39 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                 },
             },
             "/api/v1/embed-keys/{key_id}": {
+                "patch": {
+                    "tags": ["Embed"],
+                    "summary": "Update embed key allowed Origin sites",
+                    "operationId": "patchEmbedKeyOrigins",
+                    "security": [{"SessionCookie": []}],
+                    "parameters": [
+                        {
+                            "name": "key_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "allowed_embed_origins": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Empty array clears per-key list → platform CORS default",
+                                        }
+                                    },
+                                    "required": ["allowed_embed_origins"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Updated origins"}},
+                },
                 "delete": {
                     "tags": ["Embed"],
                     "summary": "Revoke embed key",

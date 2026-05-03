@@ -152,9 +152,9 @@
           <p class="muted card-lead">
             Paste this snippet before <code>&lt;/body&gt;</code> on any site. Replace
             <code>YOUR_EMBED_API_KEY</code> after creating a key below.
-            Customer domains must be listed under <strong>Platform settings</strong> (super admin):
-            <strong>Embed widget · CORS</strong> — or set <code>EMBED_CORS_ORIGINS</code> on the server when no DB override exists.
-            Avoid <code>*</code> in production.
+            Each key can pin its own <strong>Allowed websites</strong> (browser <code>Origin</code>).
+            If left blank, the platform list applies (<strong>Platform settings → Embed widget · CORS</strong> or env <code>EMBED_CORS_ORIGINS</code>).
+            Avoid <code>*</code> in production on the platform default.
           </p>
           <pre id="embed-snippet-template" class="code-block" style="white-space:pre-wrap;font-size:0.82rem;"></pre>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-embed-snippet">
@@ -184,6 +184,11 @@
               <select id="embed-key-collections" class="input" multiple size="5"></select>
               <span class="muted" style="font-size:0.78rem;">Cmd/Ctrl-click to multi-select · empty = all tenant collections</span>
             </label>
+            <label class="field">
+              <span class="field-label">Allowed websites — origins (optional)</span>
+              <textarea id="embed-key-origins" class="input" rows="3" placeholder="https://www.example.com&#10;https://app.example.com"></textarea>
+              <span class="muted" style="font-size:0.78rem;">One per line or comma-separated · exact <code>Origin</code> match · empty = platform default CORS</span>
+            </label>
             <button type="submit" class="btn btn-primary">Generate key</button>
           </form>
           <p id="embed-key-created" class="muted" style="margin-top:1rem;display:none;"></p>
@@ -203,12 +208,13 @@
                 <tr>
                   <th>Name</th>
                   <th>Prefix</th>
+                  <th>Sites (origins)</th>
                   <th>Status</th>
                   <th class="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="embed-keys-body">
-                <tr><td colspan="4" class="muted center">Loading…</td></tr>
+                <tr><td colspan="5" class="muted center">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -306,6 +312,27 @@
     <div style="display:flex;justify-content:flex-end;gap:0.65rem;margin-top:1.25rem;">
       <button type="button" class="btn btn-secondary" id="agent-settings-cancel">Cancel</button>
       <button type="button" class="btn btn-primary" id="agent-settings-save">Save &amp; use</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="embed-origins-dialog" class="dialog sheet-wide">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <div>
+        <h3 id="embed-origins-dialog-title">Allowed websites for embed key</h3>
+        <p class="muted" style="margin:0.25rem 0 0;font-size:0.88rem;">Must match the browser <code>Origin</code> exactly. Empty → platform default CORS.</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="embed-origins-dialog-close">Close</button>
+    </header>
+    <input type="hidden" id="embed-origins-key-id" value="" />
+    <label class="field" style="margin-top:1rem;">
+      <span class="field-label">Origins</span>
+      <textarea id="embed-origins-textarea" class="input" rows="5" placeholder="https://www.customer.com"></textarea>
+    </label>
+    <div style="display:flex;justify-content:flex-end;gap:0.65rem;margin-top:1.25rem;">
+      <button type="button" class="btn btn-secondary" id="embed-origins-dialog-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="embed-origins-dialog-save">Save</button>
     </div>
   </div>
 </dialog>

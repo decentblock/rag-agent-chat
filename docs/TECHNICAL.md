@@ -186,7 +186,7 @@ Public marketing form posts (**`kind`**: `contact_sales` or `request_proposal`):
 
 ### 5.10 `api_keys`
 
-Tenant-scoped **embed / integration keys**: `name`, unique **`key_prefix`** (public lookup fragment), **`key_hash`** (Werkzeug hash of full secret), optional **`allowed_collection_ids_json`** (restrict retrieval; omit or empty = all tenant collections), optional **`default_agent_id`** / **`agent_config_json`** for widget defaults, **`is_active`**.
+Tenant-scoped **embed / integration keys**: `name`, unique **`key_prefix`** (public lookup fragment), **`key_hash`** (Werkzeug hash of full secret), optional **`allowed_collection_ids_json`** (restrict retrieval; omit or empty = all tenant collections), optional **`allowed_embed_origins_json`** (JSON array of **`https://…`** Origins for this key only; omit or empty = use platform embed CORS / **`EMBED_CORS_ORIGINS`**), optional **`default_agent_id`** / **`agent_config_json`** for widget defaults, **`is_active`**.
 
 Issued secrets look like **`nxemb_<12 hex>_<48 hex>`** — shown **once** at creation. **`POST /api/embed/chat`** validates the Bearer / header token against this table (`authenticate_embed_key`).
 
@@ -445,14 +445,16 @@ Unless stated, JSON bodies use `Content-Type: application/json`. Authenticated r
 - **Collections:** if the key defines **`allowed_collection_ids`**, retrieval is limited to that set; when the client omits `collection_ids`, **all allowed key collections** are used (not the whole tenant). Requested IDs must intersect the key allow-list.  
 - **Memory:** `session_id` is derived as `embed:<key_id>:<visitor_session>` (default visitor label `anon`) so LangChain memory partitions per visitor per key.  
 - **Plan / metering:** same **`Tenant`** as the key — inactive tenant → **`403`** `Organisation suspended`; **`chat_quota_blocked`** → **`429`**, **`agent_allowed_on_plan`** → **`403`**; **`record_successful_chat_turn`** after a successful **`run_chat_turn`**.  
-- **Errors:** `401` invalid key · **`403`** suspended org / agent not enabled · `400` validation / scope  
+- **CORS:** **`Origin`** must match the key’s **`allowed_embed_origins`** when that list is non-empty; otherwise platform embed CORS (**`system_settings.embed_cors_origins`** / **`EMBED_CORS_ORIGINS`**), including **`*`**. Mismatch → **`403`** `Origin not allowed for this embed key`.  
+- **Errors:** `401` invalid key · **`403`** suspended org / agent not enabled / Origin blocked · `400` validation / scope  
 
-#### `GET /api/v1/embed-keys` · `POST /api/v1/embed-keys` · `DELETE /api/v1/embed-keys/<key_id>`
+#### `GET /api/v1/embed-keys` · `POST /api/v1/embed-keys` · `PATCH /api/v1/embed-keys/<key_id>` · `DELETE /api/v1/embed-keys/<key_id>`
 
 - **Auth:** session · **Permission:** **`embed:keys`** (Admin has `*`; Editors receive **`embed:keys`** from seed / backfill).  
-- **`GET`:** **`200`** `{ "keys": [ { id, name, key_prefix, is_active, allowed_collection_ids, default_agent_id, default_agent_config, created_at }, ... ] }` — response omits secret hashes and never returns full **`api_key`**.  
-- **`POST` body:** `{ "name": string (required), "allowed_collection_ids"?: string[] (collection UUIDs; omit or empty = unrestricted tenant scope), "default_agent_id"?: string, "default_agent_config"?: object }` — **`POST`** also enforces **`check_can_add_embed_key`** (**`403`** at **`max_embed_keys`**) and **`agent_allowed_on_plan`** for **`default_agent_id`** when set (**`403`**).  
-- **`POST` response `201`:** `{ id, api_key, key_prefix, allowed_collection_ids }` — **`api_key`** plaintext **shown once**.  
+- **`GET`:** **`200`** `{ "keys": [ { id, name, key_prefix, is_active, allowed_collection_ids, allowed_embed_origins, default_agent_id, default_agent_config, created_at }, ... ] }` — response omits secret hashes and never returns full **`api_key`**.  
+- **`POST` body:** `{ "name": string (required), "allowed_collection_ids"?: string[], "allowed_embed_origins"?: string[] (optional per-key Origin allow-list; omit for platform default), "default_agent_id"?: string, "default_agent_config"?: object }` — **`POST`** also enforces **`check_can_add_embed_key`** (**`403`** at **`max_embed_keys`**) and **`agent_allowed_on_plan`** for **`default_agent_id`** when set (**`403`**).  
+- **`POST` response `201`:** `{ id, api_key, key_prefix, allowed_collection_ids, allowed_embed_origins }` — **`api_key`** plaintext **shown once**.  
+- **`PATCH` body:** `{ "allowed_embed_origins": string[] }` — updates per-key sites only (**empty array** clears override → platform default). **`404`** unknown key.  
 - **`DELETE`:** **`200`** `{ ok: true }` — sets **`is_active = false`** (soft revoke).  
 
 Static widget script: **`GET /static/embed/nexura-chat.js`** — register with **`defer`**, **`data-api-key`**, **`data-base-url`**; optional **`data-title`**, **`data-accent`** (6-digit `#RRGGBB`). Snippet is generated on the console **Embed** tab (**`/app`**).
@@ -658,7 +660,7 @@ Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), 
 4. Treat **`/api/marketplace/agents`** as public marketing data only.  
 5. **`uploads/`** and **`chroma-db/`** contain tenant data — backup and ACL accordingly.  
 6. Replace in-memory **`memory_store`** if horizontally scaling workers.  
-7. **Embed:** allow-list customer **`Origin`** values via **Platform settings → Embed widget · CORS** (**`system_settings.embed_cors_origins`**) or env **`EMBED_CORS_ORIGINS`** when no DB row exists (avoid **`*`** on the public internet). Revoke compromised **`ApiKey`** rows immediately (**DELETE `/api/v1/embed-keys/<id>`**). Prefer **`allowed_collection_ids`** on keys to limit retrieval blast radius.  
+7. **Embed:** each **`ApiKey`** may define **`allowed_embed_origins`** for browser **`Origin`** checks on **`POST /api/embed/chat`**; otherwise use **Platform settings → Embed widget · CORS** (**`system_settings.embed_cors_origins`**) or env **`EMBED_CORS_ORIGINS`**. Avoid platform **`*`** on the public internet. Revoke compromised keys (**`DELETE /api/v1/embed-keys/<id>`**). Prefer **`allowed_collection_ids`** on keys to limit retrieval blast radius.  
 8. **Embed secrets** are bearer tokens — anyone with **`nxemb_…`** can chat within that key’s scope; never commit keys to git or expose them in client-side source beyond the hosted snippet pattern (rotate if leaked).
 
 ---

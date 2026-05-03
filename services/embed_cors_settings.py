@@ -1,12 +1,13 @@
-"""Embed widget CORS: env default + optional ``system_settings`` override (super admin)."""
+"""Embed widget CORS: platform default + per–embed-key origins + optional ``system_settings``."""
 
 from __future__ import annotations
 
-from flask import make_response, request
+from flask import g, make_response, request
 
 from config import EMBED_CORS_ORIGINS
 from extensions import db
-from models import SystemSetting
+from models import ApiKey, SystemSetting
+from services.embed_key_service import parse_allowed_embed_origins
 
 EMBED_CORS_SETTING_KEY = "embed_cors_origins"
 
@@ -46,22 +47,82 @@ def save_embed_cors_from_form(raw: str | None) -> None:
     db.session.commit()
 
 
+def _global_origin_pool(raw: str) -> set[str]:
+    if (raw or "").strip() == "*":
+        return set()
+    return {x.strip().rstrip("/") for x in raw.split(",") if x.strip()}
+
+
+def union_preflight_origin_pool() -> set[str]:
+    """Origins allowed by platform settings plus every active embed key’s explicit list."""
+    raw_global = get_embed_cors_effective_raw()
+    pool = _global_origin_pool(raw_global)
+    for row in ApiKey.query.filter_by(is_active=True).all():
+        for o in parse_allowed_embed_origins(row):
+            pool.add(o.rstrip("/"))
+    return pool
+
+
+def resolve_embed_preflight_allow_origin() -> tuple[bool, str | None]:
+    """OPTIONS: ``(use_star, reflected_origin)``. ``use_star`` True → echo ``*``."""
+    origin = (request.headers.get("Origin") or "").strip().rstrip("/")
+    raw_global = get_embed_cors_effective_raw()
+    if raw_global.strip() == "*":
+        return True, "*"
+    if not origin:
+        return False, None
+    pool = union_preflight_origin_pool()
+    if origin in pool:
+        return False, origin
+    return False, None
+
+
+def validate_embed_post_origin(origin_header: str | None, api_row: ApiKey) -> bool:
+    """Check Origin for this key / platform fallback; set ``g`` flags for ``after_request``."""
+    raw_global = get_embed_cors_effective_raw()
+    key_origins = parse_allowed_embed_origins(api_row)
+
+    if key_origins:
+        origin_norm = (origin_header or "").strip().rstrip("/")
+        if origin_norm and origin_norm in key_origins:
+            g.embed_cors_reflect_origin = origin_norm
+            return True
+        return False
+
+    if raw_global.strip() == "*":
+        g.embed_cors_reflect_star = True
+        return True
+
+    origin_norm = (origin_header or "").strip().rstrip("/")
+    pool = _global_origin_pool(raw_global)
+    if origin_norm and origin_norm in pool:
+        g.embed_cors_reflect_origin = origin_norm
+        return True
+    return False
+
+
 def apply_embed_cors_to_response(response):
-    """Attach CORS headers for ``/api/embed/*`` when Origin matches policy."""
+    """CORS headers for ``/api/embed/*`` (OPTIONS union preflight; POST uses ``g``)."""
     if not request.path.startswith("/api/embed"):
         return response
-    origin = request.headers.get("Origin")
-    raw = get_embed_cors_effective_raw()
-    if raw == "*":
-        response.headers["Access-Control-Allow-Origin"] = "*"
-    elif origin:
-        allowed = {x.strip() for x in raw.split(",") if x.strip()}
-        if origin in allowed:
-            response.headers["Access-Control-Allow-Origin"] = origin
+
+    acao: str | None = None
+    if request.method == "OPTIONS":
+        use_star, refl = resolve_embed_preflight_allow_origin()
+        acao = "*" if use_star else refl
+    else:
+        if getattr(g, "embed_cors_reflect_star", False):
+            acao = "*"
+        elif getattr(g, "embed_cors_reflect_origin", None):
+            acao = g.embed_cors_reflect_origin
+
+    if acao:
+        response.headers["Access-Control-Allow-Origin"] = acao
+        if acao != "*":
             response.headers.add("Vary", "Origin")
-    response.headers.setdefault("Access-Control-Allow-Methods", ALLOW_METHODS)
-    response.headers.setdefault("Access-Control-Allow-Headers", ALLOW_HEADERS)
-    response.headers.setdefault("Access-Control-Max-Age", MAX_AGE)
+        response.headers.setdefault("Access-Control-Allow-Methods", ALLOW_METHODS)
+        response.headers.setdefault("Access-Control-Allow-Headers", ALLOW_HEADERS)
+        response.headers.setdefault("Access-Control-Max-Age", MAX_AGE)
     return response
 
 
