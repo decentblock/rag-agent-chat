@@ -10,6 +10,11 @@ from werkzeug.security import generate_password_hash
 from extensions import db
 from models import Tenant, User
 from plans_catalog import PLANS, PLAN_ORDER, get_plan_limits, normalize_plan_slug
+from services.tenant_access import (
+    REGISTRATION_APPROVED,
+    REGISTRATION_PENDING_REVIEW,
+    REGISTRATION_REJECTED,
+)
 
 
 def _tenant_is_active(tenant: Tenant) -> bool:
@@ -28,6 +33,9 @@ def list_tenants_payload() -> list[dict[str, Any]]:
                 "slug": t.slug,
                 "plan_slug": t.plan_slug,
                 "is_active": _tenant_is_active(t),
+                "registration_status": (
+                    getattr(t, "registration_status", None) or "approved"
+                ).strip().lower(),
                 "users_count": n_users,
                 "created_at": t.created_at.isoformat() + "Z" if t.created_at else None,
             }
@@ -55,6 +63,7 @@ def tenant_detail_payload(tenant_id: str) -> dict[str, Any] | None:
     slug = normalize_plan_slug(t.plan_slug)
     plan_limits = get_plan_limits(slug)
     ov = _parse_allowed_override(getattr(t, "allowed_agent_ids_json", None))
+    reg = (getattr(t, "registration_status", None) or "approved").strip().lower()
     return {
         "tenant": {
             "id": t.id,
@@ -62,6 +71,7 @@ def tenant_detail_payload(tenant_id: str) -> dict[str, Any] | None:
             "slug": t.slug,
             "plan_slug": t.plan_slug,
             "is_active": _tenant_is_active(t),
+            "registration_status": reg,
             "billing_contact_email": getattr(t, "billing_contact_email", None),
             "payment_provider_customer_id": getattr(t, "payment_provider_customer_id", None),
             "notes": getattr(t, "notes", None),
@@ -128,6 +138,22 @@ def patch_tenant_super(tenant_id: str, body: dict[str, Any]) -> tuple[dict[str, 
             t.allowed_agent_ids_json = json.dumps(cleaned)
         else:
             return None, "allowed_agent_ids must be an array or null"
+
+    if "registration_status" in body:
+        raw = str(body.get("registration_status") or "").strip().lower()
+        if raw not in (
+            REGISTRATION_APPROVED,
+            REGISTRATION_PENDING_REVIEW,
+            REGISTRATION_REJECTED,
+        ):
+            return None, "registration_status must be approved, pending_review, or rejected"
+        t.registration_status = raw
+        if raw == REGISTRATION_REJECTED:
+            t.is_active = False
+        elif raw == REGISTRATION_APPROVED:
+            t.is_active = True
+        elif raw == REGISTRATION_PENDING_REVIEW:
+            t.is_active = True
 
     db.session.commit()
     detail = tenant_detail_payload(tenant_id)

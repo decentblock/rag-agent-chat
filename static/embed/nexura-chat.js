@@ -5,8 +5,8 @@
  *     data-api-key="nxemb_..."
  *     data-base-url="https://YOUR-NEXURA-HOST"
  *     data-collection-ids="general,support"></script>
- * Optional data-collection-ids: comma/space-separated KB slugs or UUIDs (must fall within embed key scope).
- * Org-managed agent title, welcome message, and visitor contact form are loaded from GET /api/embed/widget-config.
+ * Optional data-collection-ids: comma/space-separated KB slugs or UUIDs when scoping retrieval (omit when the embed key already restricts collections or for all tenant collections).
+ * Org-managed title, welcome message, and optional visitor form toggle come from GET /api/embed/widget-config.
  * Optional data-auto-open="false" to load closed (default opens enlarged panel once config is ready).
  * Chat transcript is kept in sessionStorage for this tab until the tab/window is closed (survives reload).
  */
@@ -92,8 +92,6 @@
     ".nexura-lead-wrap label{font-size:.76rem;color:#334155;display:flex;flex-direction:column;gap:.2rem;font-weight:600}" +
     ".nexura-lead-wrap input,.nexura-lead-wrap textarea{font-weight:400;border:1px solid #cbd5e1;border-radius:8px;padding:.45rem .55rem;font:inherit;font-size:.88rem}" +
     ".nexura-lead-wrap .nexura-req{color:#b91c1c;font-weight:700}" +
-    ".nexura-skip-options label{font-weight:500;display:flex;gap:.4rem;align-items:flex-start;cursor:pointer;color:#475569}" +
-    ".nexura-skip-options input[type=checkbox]{margin:.12rem 0 0;flex-shrink:0}" +
     ".nexura-lead-submit{margin-top:.25rem;padding:.55rem;border:none;border-radius:10px;background:" +
     accent +
     ";color:#fff;font-weight:600;cursor:pointer;font-size:.88rem}" +
@@ -136,12 +134,8 @@
     '<label>Comments or details (optional)<textarea class="nexura-in-msg" rows="3" maxlength="2000" placeholder="What should we know? Questions, context, or how we can help…"></textarea></label>' +
     '<label>Name <span class="nexura-req">*</span><input type="text" class="nexura-in-name" autocomplete="name" maxlength="255" /></label>' +
     '<p class="nexura-contact-hint" style="margin:0;font-size:.78rem;color:#64748b;line-height:1.4"></p>' +
-    '<div class="nexura-skip-options" style="display:flex;flex-direction:column;gap:.35rem;margin-bottom:.15rem">' +
-    '<label><input type="checkbox" class="nexura-chk-skip-email" /><span>No email — phone only</span></label>' +
-    '<label><input type="checkbox" class="nexura-chk-skip-phone" /><span>No phone — email only</span></label>' +
-    "</div>" +
     '<label class="nexura-row-email">Email<input type="email" class="nexura-in-email" autocomplete="email" maxlength="255" placeholder="you@example.com" /></label>' +
-    '<label class="nexura-row-phone">Phone<input type="tel" class="nexura-in-phone" autocomplete="tel" maxlength="64" placeholder="So we can reach you" /></label>' +
+    '<label class="nexura-row-phone">Phone<input type="tel" class="nexura-in-phone" autocomplete="tel" maxlength="64" placeholder="+1 … (required if email empty)" /></label>' +
     '<p class="nexura-lead-err" hidden></p>' +
     '<button type="button" class="nexura-lead-submit">Continue to chat</button>' +
     "</div>" +
@@ -169,10 +163,6 @@
   var inPhone = root.querySelector(".nexura-in-phone");
   var inLeadMsg = root.querySelector(".nexura-in-msg");
   var contactHint = root.querySelector(".nexura-contact-hint");
-  var chkSkipEmail = root.querySelector(".nexura-chk-skip-email");
-  var chkSkipPhone = root.querySelector(".nexura-chk-skip-phone");
-  var rowEmail = root.querySelector(".nexura-row-email");
-  var rowPhone = root.querySelector(".nexura-row-phone");
   var leadErr = root.querySelector(".nexura-lead-err");
   var btnLead = root.querySelector(".nexura-lead-submit");
   var mainWrap = root.querySelector(".nexura-main-wrap");
@@ -299,56 +289,18 @@
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
   }
 
-  function syncContactSkipUi() {
-    if (!chkSkipEmail || !chkSkipPhone || !rowEmail || !rowPhone) return;
-    var se = chkSkipEmail.checked;
-    var sp = chkSkipPhone.checked;
-    if (se && sp) chkSkipPhone.checked = false;
-    sp = chkSkipPhone.checked;
-    if (se) {
-      inEmail.value = "";
-      inEmail.disabled = true;
-      rowEmail.style.display = "none";
-      rowPhone.style.display = "";
-      inPhone.disabled = false;
-      return;
-    }
-    rowEmail.style.display = "";
-    inEmail.disabled = false;
-    if (sp) {
-      inPhone.value = "";
-      inPhone.disabled = true;
-      rowPhone.style.display = "none";
-    } else {
-      rowPhone.style.display = "";
-      inPhone.disabled = false;
-    }
-  }
-
-  if (chkSkipEmail && chkSkipPhone) {
-    chkSkipEmail.addEventListener("change", function () {
-      if (chkSkipEmail.checked) chkSkipPhone.checked = false;
-      syncContactSkipUi();
-    });
-    chkSkipPhone.addEventListener("change", function () {
-      if (chkSkipPhone.checked) chkSkipEmail.checked = false;
-      syncContactSkipUi();
-    });
-  }
-
   function syncLeadVsChatLayout() {
-    var collect = widgetCfg.collect_visitor_contact !== false;
+    var collect = widgetCfg.collect_visitor_contact === true;
     var needLead = collect && !leadGatePassed();
     leadWrap.classList.toggle("nexura-show", needLead);
     mainWrap.classList.toggle("nexura-show", !needLead);
     if (needLead) {
       leadIntro.textContent =
-        "Use the comment box above if you like. Your name is required; we need either an email or a phone number so our team can reach you.";
+        "Optional comment above. Your name is required. Enter both email and phone if you like — at least one is required so we can reach you.";
       if (contactHint) {
         contactHint.textContent =
-          "Use a checkbox only if you cannot provide one contact method. At least one of email or phone stays required.";
+          "Either a valid email or a phone number (or both).";
       }
-      syncContactSkipUi();
       inp.disabled = true;
       btnSend.disabled = true;
     } else {
@@ -492,22 +444,16 @@
     var em = (inEmail.value || "").trim();
     var ph = (inPhone.value || "").trim();
     var lm = (inLeadMsg.value || "").trim();
-    var se = chkSkipEmail && chkSkipEmail.checked;
-    var sp = chkSkipPhone && chkSkipPhone.checked;
     var err = "";
     if (!nm) err = "Name is required.";
-    else if (se) {
-      if (!ph) err = "Phone is required when you skip email.";
-    } else if (sp) {
-      if (!emailLooksOk(em)) err = "A valid email is required when you skip phone.";
-    } else {
+    else {
       var hasPhone = !!ph;
       var okEmail = emailLooksOk(em);
       if (!hasPhone && !okEmail) {
         if (em && !okEmail) {
-          err = "Email format looks invalid, or add a phone number.";
+          err = "Enter a valid email or add a phone number.";
         } else {
-          err = "Provide an email or a phone number, or choose a skip option.";
+          err = "Provide an email or a phone number (or both).";
         }
       }
     }
@@ -526,8 +472,8 @@
       body: JSON.stringify({
         visitor_session: visitorId(),
         name: nm,
-        email: se ? "" : em,
-        phone: sp ? "" : ph,
+        email: em,
+        phone: ph,
         message: lm || undefined,
       }),
     })

@@ -118,6 +118,50 @@
   </div>
 </section>
 
+<section class="ld-section ld-spin-section" id="play" aria-labelledby="ld-spin-heading">
+  <div class="ld-container">
+    <header class="ld-section-head ld-spin-head">
+      <div>
+        <p class="ld-kicker ld-spin-kicker">Take it for a spin</p>
+        <h2 id="ld-spin-heading" class="ld-section-title">Luck favors the curious operator</h2>
+        <p class="ld-section-lead ld-spin-lead">
+          Give the wheel a whirl — each slice celebrates something Nexura does well.
+          Then scroll on for the serious stuff: isolation, agents, and grounded chat that ships.
+        </p>
+      </div>
+    </header>
+    <div class="ld-spin-layout">
+      <div class="ld-spin-visual" aria-live="polite">
+        <div class="ld-spin-stage">
+          <div class="ld-spin-pointer" aria-hidden="true"></div>
+          <div class="ld-spin-wheel-wrap">
+            <div class="ld-spin-wheel" id="ld-spin-wheel" role="img" aria-label="Prize wheel"></div>
+            <div class="ld-spin-hub">
+              <span class="ld-spin-hub-text" id="ld-spin-result">Ready?</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary btn-lg ld-spin-btn" id="ld-spin-btn">
+          Spin the Nexura wheel
+        </button>
+        <p class="muted ld-spin-foot" id="ld-spin-foot">Fair warning: every outcome is a flex — we are biased toward great retrieval.</p>
+      </div>
+      <div class="ld-spin-copy">
+        <ul class="ld-spin-perks">
+          <li><strong>Knowledge stays yours.</strong> Collections and embeddings never cross tenant walls — even when agents get clever.</li>
+          <li><strong>Agents with receipts.</strong> Marketplace workflows cite sources; auditors see filenames where it matters.</li>
+          <li><strong>Embed without regret.</strong> CORS-scoped keys, optional visitor capture, and engagement that respects isolation.</li>
+          <li><strong>Ops-friendly defaults.</strong> RBAC, quotas, and super-admin gates when you want signup review before go-live.</li>
+        </ul>
+        <blockquote class="ld-spin-quote" id="ld-spin-quote">
+          <span class="ld-spin-quote-mark" aria-hidden="true">“</span>
+          <span id="ld-spin-quote-body">Spin once — we’ll brag about grounded answers for you.</span>
+        </blockquote>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="ld-section" id="features">
   <div class="ld-container">
     <header class="ld-section-head">
@@ -333,6 +377,69 @@
     if (btn.getAttribute("data-billing-trigger") === "monthly") btn.classList.add("is-active");
   });
   apply("monthly");
+})();
+</script>
+<script>
+(function () {
+  var wheel = document.getElementById("ld-spin-wheel");
+  var btn = document.getElementById("ld-spin-btn");
+  var hub = document.getElementById("ld-spin-result");
+  var quote = document.getElementById("ld-spin-quote-body");
+  var foot = document.getElementById("ld-spin-foot");
+  if (!wheel || !btn || !hub) return;
+
+  var SLICES = [
+    { short: "Jackpot: isolation", long: "Vectors and files stay inside tenant walls — no accidental cross-talk." },
+    { short: "Grounded answers", long: "Agents retrieve first, then speak — citations stay in your audit trail." },
+    { short: "Marketplace magic", long: "Four production workflows share one retrieval core; swap personalities without redeploying infra." },
+    { short: "RBAC that fits", long: "Admin, Editor, Viewer — plus platform gates when new orgs need a human thumbs-up." },
+    { short: "Embed hero", long: "Scoped keys, optional visitor capture, CORS you control — ship chat without owning auth." },
+    { short: "BYOK-friendly", long: "Bring your model keys at org or embed-key level; defaults cover quick starts." },
+    { short: "Audit-ready", long: "Console and embed transcripts log sources operators care about — not your end users." },
+    { short: "Spin again!", long: "Seriously — multi-tenant RAG should feel this fun once in a while." },
+  ];
+
+  var rotation = 0;
+  var spinning = false;
+
+  btn.addEventListener("click", function () {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    hub.textContent = "Spinning…";
+
+    var idx = Math.floor(Math.random() * SLICES.length);
+    var slice = 360 / SLICES.length;
+    var extras = 2880 + Math.random() * 540;
+    rotation += extras + idx * slice + slice / 2;
+    wheel.style.transform = "rotate(" + rotation + "deg)";
+
+    var settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      spinning = false;
+      btn.disabled = false;
+      hub.textContent = SLICES[idx].short;
+      if (quote) quote.textContent = SLICES[idx].long;
+      if (foot) {
+        foot.textContent =
+          "You landed on: " +
+          SLICES[idx].short +
+          ". Every slice is true — spin again if you do not believe us.";
+      }
+    }
+
+    wheel.addEventListener(
+      "transitionend",
+      function onTe(ev) {
+        if (ev.propertyName !== "transform") return;
+        wheel.removeEventListener("transitionend", onTe);
+        finish();
+      }
+    );
+    window.setTimeout(finish, 4000);
+  });
 })();
 </script>
 {% endblock %}

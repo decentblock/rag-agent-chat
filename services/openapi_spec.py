@@ -144,7 +144,10 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                         },
                         "collect_visitor_contact": {
                             "type": "boolean",
-                            "description": "When true, widget shows contact gate (optional comment, then name/email/phone) before chat.",
+                            "description": (
+                                "When true, widget shows optional comment, name, email, and phone before chat "
+                                "(either email or phone required). When false, chat is immediate."
+                            ),
                         },
                     },
                 },

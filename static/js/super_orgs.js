@@ -157,6 +157,21 @@
     document.getElementById("orgs-payment-id").value = tenant.payment_provider_customer_id || "";
     document.getElementById("orgs-notes").value = tenant.notes || "";
 
+    const reg = String(tenant.registration_status || "approved").toLowerCase();
+    const regLine = document.getElementById("orgs-reg-status-line");
+    if (regLine) {
+      if (reg === "pending_review") {
+        regLine.textContent =
+          "Status: Pending review — tenant admins can sign in but only see the approval waiting page.";
+      } else if (reg === "rejected") {
+        regLine.textContent =
+          "Status: Rejected — organisation is inactive; admins cannot complete sign-in.";
+      } else {
+        regLine.textContent =
+          "Status: Approved — console, APIs, and embed widgets are available (unless suspended).";
+      }
+    }
+
     applyAgentsUI(detail);
     if (usersListOptional !== undefined) renderUsers(usersListOptional);
   }
@@ -226,13 +241,17 @@
   function renderTenantRows(tenants) {
     tbody.innerHTML = "";
     if (!tenants.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="muted">No organisations.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">No organisations.</td></tr>';
       return;
     }
     for (const t of tenants) {
       const tr = document.createElement("tr");
       tr.setAttribute("data-tenant-id", t.id);
       const ok = t.is_active ? "●" : '<span class="pill-inactive">off</span>';
+      const reg = String(t.registration_status || "approved").toLowerCase();
+      let regCell = '<span class="muted">✓</span>';
+      if (reg === "pending_review") regCell = '<span class="pill-pending">pending</span>';
+      else if (reg === "rejected") regCell = '<span class="pill-rejected">rejected</span>';
       tr.innerHTML =
         "<td><code>" +
         escapeHtml(t.slug) +
@@ -242,6 +261,9 @@
         "</td>" +
         "<td>" +
         ok +
+        "</td>" +
+        "<td>" +
+        regCell +
         "</td>";
       tr.addEventListener("click", () => selectOrg(t.id));
       tbody.appendChild(tr);
@@ -272,7 +294,7 @@
       await loadListQuiet();
     } catch (e) {
       showFlash("err", e.message);
-      tbody.innerHTML = '<tr><td colspan="3" class="muted">Failed to load.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">Failed to load.</td></tr>';
     }
   }
 
@@ -389,6 +411,54 @@
       showFlash("ok", "Agents saved.");
       loadListQuiet();
       setTimeout(clearFlash, 2200);
+    } catch (e) {
+      showFlash("err", e.message);
+    }
+  });
+
+  document.getElementById("orgs-btn-approve-reg")?.addEventListener("click", async () => {
+    if (!document.getElementById("orgs-edit-id").value) return;
+    clearFlash();
+    try {
+      const detail = await patchTenant({ registration_status: "approved" });
+      applyDetail(detail);
+      showFlash("ok", "Organisation approved.");
+      loadListQuiet();
+      setTimeout(clearFlash, 2200);
+    } catch (e) {
+      showFlash("err", e.message);
+    }
+  });
+
+  document.getElementById("orgs-btn-pending-reg")?.addEventListener("click", async () => {
+    if (!document.getElementById("orgs-edit-id").value) return;
+    clearFlash();
+    try {
+      const detail = await patchTenant({ registration_status: "pending_review" });
+      applyDetail(detail);
+      showFlash("ok", "Marked as pending review.");
+      loadListQuiet();
+      setTimeout(clearFlash, 2200);
+    } catch (e) {
+      showFlash("err", e.message);
+    }
+  });
+
+  document.getElementById("orgs-btn-reject-reg")?.addEventListener("click", async () => {
+    if (!document.getElementById("orgs-edit-id").value) return;
+    if (
+      !confirm(
+        "Reject this organisation? Tenant users will not be able to sign in. You can approve again later from this panel."
+      )
+    )
+      return;
+    clearFlash();
+    try {
+      const detail = await patchTenant({ registration_status: "rejected" });
+      applyDetail(detail);
+      showFlash("ok", "Registration rejected; organisation suspended.");
+      loadListQuiet();
+      setTimeout(clearFlash, 2600);
     } catch (e) {
       showFlash("err", e.message);
     }

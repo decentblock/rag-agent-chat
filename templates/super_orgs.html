@@ -19,6 +19,8 @@
   .orgs-table tbody tr:hover { background: rgba(148, 163, 184, 0.06); }
   .orgs-table tbody tr.orgs-row-selected { background: rgba(45, 212, 191, 0.08); outline: 1px solid rgba(45, 212, 191, 0.25); }
   .pill-inactive { font-size: 0.7rem; padding: 0.12rem 0.4rem; border-radius: 999px; background: rgba(239, 68, 68, 0.2); color: #fecaca; }
+  .pill-pending { font-size: 0.7rem; padding: 0.12rem 0.45rem; border-radius: 999px; background: rgba(251, 191, 36, 0.2); color: #fde68a; font-weight: 600; }
+  .pill-rejected { font-size: 0.7rem; padding: 0.12rem 0.45rem; border-radius: 999px; background: rgba(239, 68, 68, 0.22); color: #fecaca; font-weight: 600; }
   .orgs-detail-placeholder { padding: 2rem 1rem; text-align: center; color: var(--muted); font-size: 0.9rem; border: 1px dashed rgba(148, 163, 184, 0.25); border-radius: var(--radius-md); }
   .orgs-mini { margin-bottom: 1rem; }
   .orgs-mini .card-title { font-size: 0.95rem; margin: 0 0 0.35rem; }
@@ -72,7 +74,8 @@
                 <tr>
                   <th>Slug</th>
                   <th>Plan</th>
-                  <th>✓</th>
+                  <th title="Organisation active">○</th>
+                  <th>Signup</th>
                 </tr>
               </thead>
               <tbody id="orgs-tbody">
@@ -106,6 +109,18 @@
                   <button type="submit" class="btn btn-primary btn-sm">Save profile</button>
                 </div>
               </form>
+            </article>
+
+            <article class="card card-elevated orgs-mini">
+              <h3 class="card-title">Registration review</h3>
+              <p class="muted card-lead">New self-service organisations start in <strong>pending review</strong>. Approve to unlock the console and embed; reject to block access.</p>
+              <p id="orgs-reg-status-line" class="muted" style="margin:0 0 0.85rem;font-size:0.88rem;line-height:1.45;">—</p>
+              <div class="orgs-mini-actions">
+                <button type="button" class="btn btn-primary btn-sm" id="orgs-btn-approve-reg">Approve workspace</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="orgs-btn-pending-reg">Mark pending review</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="orgs-btn-reject-reg" style="color:#fecaca;border-color:rgba(248,113,113,0.35);">Reject registration</button>
+              </div>
+              <span class="orgs-hint">Reject sets the organisation inactive — admins see a clear message at login.</span>
             </article>
 
             <article class="card card-elevated orgs-mini">

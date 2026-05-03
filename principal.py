@@ -12,6 +12,7 @@ def register_principal_loader(app: Flask) -> None:
     def load_principal() -> None:
         g.current_user = None
         g.tenant = None
+        g.registration_pending = False
         uid = session.get("user_id")
         if not uid:
             return
@@ -23,5 +24,9 @@ def register_principal_loader(app: Flask) -> None:
         if not tenant or not getattr(tenant, "is_active", True):
             session.pop("user_id", None)
             return
+        g.registration_pending = False
+        st = (getattr(tenant, "registration_status", None) or "approved").strip().lower()
+        if st == "pending_review" and not getattr(user, "is_superuser", False):
+            g.registration_pending = True
         g.current_user = user
         g.tenant = tenant

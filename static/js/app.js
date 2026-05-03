@@ -24,11 +24,7 @@
     },
     embed: {
       title: "Embed",
-      desc: "Snippet, branding, embed keys, CORS.",
-    },
-    "visitor-leads": {
-      title: "Visitor leads",
-      desc: "Embed contact form submissions · export CSV.",
+      desc: "Widget snippet, appearance, optional visitor form, submissions export, embed keys, CORS.",
     },
     team: {
       title: "Team",
@@ -398,12 +394,6 @@
           .catch((err) =>
             toast(err.message || "Chat audit failed", "error")
           );
-      }
-      if (tab === "visitor-leads") {
-        visitorLeadsOffset = 0;
-        refreshVisitorLeadsPanel().catch((err) =>
-          toast(err.message || "Visitor leads failed", "error")
-        );
       }
       if (tab === "team") {
         refreshTeamPanel().catch((err) =>
@@ -831,7 +821,7 @@
       o +
       '"\n  data-collection-ids="general"></script>\n\n' +
       "<!-- Opens enlarged automatically; transcript survives reload until the tab closes. Use data-auto-open=\"false\" for bubble-only. -->\n" +
-      "<!-- Change general to your KB slug(s), comma-separated, or remove data-collection-ids when the embed key already restricts collections (omit for all collections when key is unrestricted). -->";
+      "<!-- data-collection-ids is optional: omit for all collections allowed by the key, or set slug(s) to narrow retrieval. Change \"general\" to your slug(s) or remove the attribute. -->";
   }
 
   async function loadEmbedBrandingForm() {
@@ -844,7 +834,7 @@
       const d = await apiFetch("/api/v1/tenant/embed-branding");
       nameEl.value = d.embed_agent_display_name || "";
       welcomeEl.value = d.embed_welcome_message || "";
-      if (cb) cb.checked = d.embed_collect_visitor_contact !== false;
+      if (cb) cb.checked = d.embed_collect_visitor_contact === true;
       if (nEl) nEl.textContent = String(d.embed_engagement_count ?? 0);
     } catch {
       if (nEl) nEl.textContent = "—";
@@ -1364,6 +1354,8 @@
     await populateEmbedAgentSelect();
     await populateEmbedCollectionMultiselect();
     await refreshEmbedKeysList();
+    visitorLeadsOffset = 0;
+    await refreshVisitorLeadsPanel();
   }
 
   document.getElementById("btn-copy-embed-snippet")?.addEventListener("click", async () => {
@@ -2042,7 +2034,11 @@
     .then(() => loadKbAuditEvents())
     .catch((e) => toast(e.message || "Library load failed", "error"));
 
-  const tabParam = new URLSearchParams(window.location.search).get("tab");
+  const tabParamRaw = new URLSearchParams(window.location.search).get("tab");
+  const tabParam =
+    tabParamRaw === "visitor-leads"
+      ? "embed"
+      : tabParamRaw;
   if (tabParam && panelCopy[tabParam]) {
     const tabBtn = document.querySelector('.nav-item[data-tab="' + tabParam + '"]');
     if (tabBtn) tabBtn.click();

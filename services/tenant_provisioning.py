@@ -56,6 +56,7 @@ def provision_new_organization(
         plan_slug=normalize_plan_slug(plan_slug),
         usage_chat_month=None,
         usage_chat_count=0,
+        registration_status="pending_review",
     )
     db.session.add(tenant)
     db.session.flush()

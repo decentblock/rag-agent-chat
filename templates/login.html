@@ -21,7 +21,9 @@
     {% endif %}
 
     {% if registration_registered %}
-    <div class="banner banner-success" role="status">Organisation created. Sign in below with your admin account.</div>
+    <div class="banner banner-success" role="status">
+      Organisation submitted. Sign in below — you will land on the approval page until a platform admin activates your workspace.
+    </div>
     {% endif %}
 
     <form class="login-form" method="post" action="{{ url_for('login_submit') }}" autocomplete="on">

@@ -9,8 +9,7 @@ from models import EmbedVisitorLead, Tenant
 
 
 def tenant_widget_public_dict(tenant: Tenant) -> dict:
-    raw_collect = getattr(tenant, "embed_collect_visitor_contact", None)
-    collect = True if raw_collect is None else bool(raw_collect)
+    collect = bool(getattr(tenant, "embed_collect_visitor_contact", False))
     return {
         "agent_display_name": (tenant.embed_agent_display_name or "").strip() or None,
         "welcome_message": (tenant.embed_welcome_message or "").strip() or None,

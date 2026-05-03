@@ -65,6 +65,32 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 register_principal_loader(app)
 
+
+@app.before_request
+def _nexura_enforce_registration_pending():
+    """Non-superusers on pending-review tenants may only see the waiting page (+ logout + static)."""
+    if request.endpoint == "static":
+        return None
+    if not getattr(g, "registration_pending", False):
+        return None
+    user = getattr(g, "current_user", None)
+    if not user or getattr(user, "is_superuser", False):
+        return None
+    ep = request.endpoint
+    if ep == "pending_review_page":
+        return None
+    if ep == "logout" and request.method == "POST":
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify(
+            {
+                "error": "pending_review",
+                "message": "Your organisation is awaiting approval before you can use the console.",
+            }
+        ), 403
+    return redirect(url_for("pending_review_page"))
+
+
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"pdf", "txt"}
 
@@ -392,8 +418,8 @@ def _ensure_tenant_embed_widget_columns() -> None:
     )
     add(
         "embed_collect_visitor_contact",
-        "ALTER TABLE tenants ADD COLUMN embed_collect_visitor_contact BOOLEAN DEFAULT 1 NOT NULL",
-        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS embed_collect_visitor_contact BOOLEAN DEFAULT TRUE NOT NULL",
+        "ALTER TABLE tenants ADD COLUMN embed_collect_visitor_contact BOOLEAN DEFAULT 0 NOT NULL",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS embed_collect_visitor_contact BOOLEAN DEFAULT FALSE NOT NULL",
     )
     add(
         "embed_engagement_count",
@@ -447,6 +473,33 @@ def _ensure_tenant_openai_credentials_columns() -> None:
         db.session.commit()
 
 
+def _ensure_tenant_registration_status_column() -> None:
+    """Self-service signup: pending_review until superuser approves."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(db.engine)
+    if not insp.has_table("tenants"):
+        return
+    existing = {c["name"] for c in insp.get_columns("tenants")}
+    dialect = db.engine.dialect.name
+    if "registration_status" not in existing:
+        if dialect == "sqlite":
+            db.session.execute(
+                text(
+                    "ALTER TABLE tenants ADD COLUMN registration_status VARCHAR(24) "
+                    "DEFAULT 'approved' NOT NULL"
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS registration_status "
+                    "VARCHAR(24) DEFAULT 'approved' NOT NULL"
+                )
+            )
+        db.session.commit()
+
+
 def init_database() -> None:
     with app.app_context():
         db.create_all()
@@ -456,6 +509,7 @@ def init_database() -> None:
         _ensure_documents_kb_columns()
         _ensure_tenant_embed_widget_columns()
         _ensure_tenant_openai_credentials_columns()
+        _ensure_tenant_registration_status_column()
         seed_if_needed(
             default_tenant_slug=DEFAULT_TENANT_SLUG,
             default_tenant_name="Default organization",
@@ -531,7 +585,7 @@ def login_submit():
     remember = request.form.get("remember") == "on"
     next_path = request.form.get("next") or request.args.get("next")
 
-    user = authenticate_user(tenant_slug, username, password)
+    user, auth_err = authenticate_user(tenant_slug, username, password)
     if user:
         session.clear()
         session["user_id"] = user.id
@@ -539,11 +593,20 @@ def login_submit():
         session.permanent = remember
         return redirect(safe_next_path(next_path))
 
+    err_msg = "Invalid tenant, username, or password."
+    if auth_err == "registration_rejected":
+        err_msg = (
+            "Your organisation registration was not approved. "
+            "Contact support if you think this is a mistake."
+        )
+    elif auth_err == "tenant_suspended":
+        err_msg = "This organisation is suspended. Contact support."
+
     return (
         render_template(
             "login.html",
             next_url=next_path or "",
-            error="Invalid tenant, username, or password.",
+            error=err_msg,
             default_tenant_slug=tenant_slug or DEFAULT_TENANT_SLUG,
             admin_bootstrap_username=ADMIN_BOOTSTRAP_USERNAME,
             registration_registered=False,
@@ -681,6 +744,16 @@ def register_submit():
 def logout():
     session.clear()
     return redirect(url_for("index"))
+
+
+@app.route("/pending-review")
+@login_required
+def pending_review_page():
+    return render_template(
+        "pending_review.html",
+        tenant_name=g.tenant.name if g.tenant else "",
+        tenant_slug=g.tenant.slug if g.tenant else "",
+    )
 
 
 @app.route("/app")
@@ -1244,6 +1317,10 @@ def embed_widget_config():
         return jsonify({"error": "Tenant not found"}), 500
     if not getattr(tenant_row, "is_active", True):
         return jsonify({"error": "Organisation suspended"}), 403
+    from services.tenant_access import tenant_embed_public_allowed
+
+    if not tenant_embed_public_allowed(tenant_row):
+        return jsonify({"error": "Organisation is not yet approved for embed"}), 403
 
     return jsonify(tenant_widget_public_dict(tenant_row)), 200
 
@@ -1269,6 +1346,14 @@ def embed_visitor_contact():
         return jsonify({"error": "Tenant not found"}), 500
     if not getattr(tenant_row, "is_active", True):
         return jsonify({"error": "Organisation suspended"}), 403
+
+    from services.tenant_access import tenant_embed_public_allowed
+
+    if not tenant_embed_public_allowed(tenant_row):
+        return jsonify({"error": "Organisation is not yet approved for embed"}), 403
+
+    if not getattr(tenant_row, "embed_collect_visitor_contact", False):
+        return jsonify({"error": "Visitor contact is disabled for this organisation"}), 403
 
     payload = request.get_json(force=True, silent=True) or {}
     cleaned, verr = validate_visitor_lead_payload(payload)
@@ -1321,6 +1406,11 @@ def embed_chat():
         return jsonify({"error": "Tenant not found"}), 500
     if not getattr(tenant_row, "is_active", True):
         return jsonify({"error": "Organisation suspended"}), 403
+
+    from services.tenant_access import tenant_embed_public_allowed
+
+    if not tenant_embed_public_allowed(tenant_row):
+        return jsonify({"error": "Organisation is not yet approved for embed"}), 403
 
     payload = request.get_json(force=True, silent=True) or {}
     chat_message = str(payload.get("chat_message", "")).strip()
@@ -1454,8 +1544,7 @@ def tenant_embed_branding_route():
     """Org-facing widget title, welcome text, visitor form toggle, engagement counter."""
     t = g.tenant
     if request.method == "GET":
-        rc = getattr(t, "embed_collect_visitor_contact", None)
-        collect = True if rc is None else bool(rc)
+        collect = bool(getattr(t, "embed_collect_visitor_contact", False))
         return jsonify(
             {
                 "embed_agent_display_name": getattr(t, "embed_agent_display_name", None) or "",
@@ -1474,8 +1563,7 @@ def tenant_embed_branding_route():
     elif isinstance(raw_collect, str):
         collect = raw_collect.lower() in ("1", "true", "yes", "on")
     elif raw_collect is None:
-        rc = getattr(t, "embed_collect_visitor_contact", None)
-        collect = True if rc is None else bool(rc)
+        collect = bool(getattr(t, "embed_collect_visitor_contact", False))
     else:
         collect = bool(raw_collect)
 

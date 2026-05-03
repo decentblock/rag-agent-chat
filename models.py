@@ -43,6 +43,8 @@ class Tenant(db.Model):
     usage_chat_count = db.Column(db.Integer, nullable=False, default=0)
     # Platform operator (super admin): suspend org — blocks login and APIs for tenant users.
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Self-service signup: pending_review until superuser approves; rejected closes the org for access.
+    registration_status = db.Column(db.String(24), nullable=False, default="approved")
     # Billing stubs until Stripe (or similar) integration — editable by superusers only.
     billing_contact_email = db.Column(db.String(255), nullable=True)
     payment_provider_customer_id = db.Column(db.String(255), nullable=True)
@@ -57,7 +59,7 @@ class Tenant(db.Model):
     # Embeddable widget copy & analytics (org admins edit via console Embed panel).
     embed_agent_display_name = db.Column(db.String(255), nullable=True)
     embed_welcome_message = db.Column(db.Text, nullable=True)
-    embed_collect_visitor_contact = db.Column(db.Boolean, default=True, nullable=False)
+    embed_collect_visitor_contact = db.Column(db.Boolean, default=False, nullable=False)
     embed_engagement_count = db.Column(db.Integer, nullable=False, default=0)
 
 
