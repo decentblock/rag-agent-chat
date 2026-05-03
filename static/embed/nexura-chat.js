@@ -7,6 +7,8 @@
  *     data-collection-ids="general,support"></script>
  * Optional data-collection-ids: comma/space-separated KB slugs or UUIDs (must fall within embed key scope).
  * Org-managed agent title, welcome message, and visitor contact form are loaded from GET /api/embed/widget-config.
+ * Optional data-auto-open="false" to load closed (default opens enlarged panel once config is ready).
+ * Chat transcript is kept in sessionStorage for this tab until the tab/window is closed (survives reload).
  */
 (function () {
   "use strict";
@@ -26,6 +28,9 @@
     : [];
   if (!/^#[0-9a-fA-F]{6}$/.test(accent)) accent = "#0f766e";
 
+  var autoOpenRaw = (script.getAttribute("data-auto-open") || "true").trim().toLowerCase();
+  var autoOpen = autoOpenRaw !== "false" && autoOpenRaw !== "0" && autoOpenRaw !== "no";
+
   if (!apiKey || !baseUrl) {
     console.warn("[Nexura] data-api-key and data-base-url are required.");
     return;
@@ -34,6 +39,8 @@
   var storageKeySuffix = apiKey.slice(-16);
   var visitorStorageKey = "nexura_visitor_" + storageKeySuffix;
   var leadDoneStorageKey = "nexura_lead_ok_" + storageKeySuffix;
+  var chatStateKey = "nexura_emb_chat_" + storageKeySuffix;
+  var chatState = { messages: [], welcome_done: false };
 
   function visitorId() {
     try {
@@ -75,7 +82,7 @@
     accent +
     ";color:#fff;font-size:1.35rem;line-height:1;display:flex;align-items:center;justify-content:center}" +
     ".nexura-launcher:hover{filter:brightness(1.06)}" +
-    ".nexura-panel{position:fixed;bottom:5.5rem;right:1.25rem;z-index:2147483000;width:min(100vw - 2rem,380px);height:min(100vh - 7rem,520px);background:#fff;border-radius:14px;box-shadow:0 12px 48px rgba(15,23,42,.15);border:1px solid #e2e8f0;display:none;flex-direction:column;overflow:hidden}" +
+    ".nexura-panel{position:fixed;bottom:5.25rem;right:1.25rem;z-index:2147483000;width:min(100vw - 2rem,440px);height:min(100vh - 6rem,580px);background:#fff;border-radius:14px;box-shadow:0 12px 48px rgba(15,23,42,.15);border:1px solid #e2e8f0;display:none;flex-direction:column;overflow:hidden}" +
     ".nexura-panel.open{display:flex}" +
     ".nexura-head{padding:.85rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:.95rem;color:#0f172a;display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-shrink:0}" +
     ".nexura-close{background:transparent;border:none;font-size:1.25rem;line-height:1;cursor:pointer;color:#64748b;padding:.15rem}" +
@@ -85,6 +92,8 @@
     ".nexura-lead-wrap label{font-size:.76rem;color:#334155;display:flex;flex-direction:column;gap:.2rem;font-weight:600}" +
     ".nexura-lead-wrap input,.nexura-lead-wrap textarea{font-weight:400;border:1px solid #cbd5e1;border-radius:8px;padding:.45rem .55rem;font:inherit;font-size:.88rem}" +
     ".nexura-lead-wrap .nexura-req{color:#b91c1c;font-weight:700}" +
+    ".nexura-skip-options label{font-weight:500;display:flex;gap:.4rem;align-items:flex-start;cursor:pointer;color:#475569}" +
+    ".nexura-skip-options input[type=checkbox]{margin:.12rem 0 0;flex-shrink:0}" +
     ".nexura-lead-submit{margin-top:.25rem;padding:.55rem;border:none;border-radius:10px;background:" +
     accent +
     ";color:#fff;font-weight:600;cursor:pointer;font-size:.88rem}" +
@@ -126,8 +135,13 @@
     '<p class="muted nexura-lead-intro" style="margin:0;font-size:.82rem;color:#475569;line-height:1.45"></p>' +
     '<label>Comments or details (optional)<textarea class="nexura-in-msg" rows="3" maxlength="2000" placeholder="What should we know? Questions, context, or how we can help…"></textarea></label>' +
     '<label>Name <span class="nexura-req">*</span><input type="text" class="nexura-in-name" autocomplete="name" maxlength="255" /></label>' +
-    '<label>Email <span class="nexura-req">*</span><input type="email" class="nexura-in-email" autocomplete="email" maxlength="255" /></label>' +
-    '<label>Phone <span class="nexura-req">*</span><input type="tel" class="nexura-in-phone" autocomplete="tel" maxlength="64" placeholder="So we can reach you" /></label>' +
+    '<p class="nexura-contact-hint" style="margin:0;font-size:.78rem;color:#64748b;line-height:1.4"></p>' +
+    '<div class="nexura-skip-options" style="display:flex;flex-direction:column;gap:.35rem;margin-bottom:.15rem">' +
+    '<label><input type="checkbox" class="nexura-chk-skip-email" /><span>No email — phone only</span></label>' +
+    '<label><input type="checkbox" class="nexura-chk-skip-phone" /><span>No phone — email only</span></label>' +
+    "</div>" +
+    '<label class="nexura-row-email">Email<input type="email" class="nexura-in-email" autocomplete="email" maxlength="255" placeholder="you@example.com" /></label>' +
+    '<label class="nexura-row-phone">Phone<input type="tel" class="nexura-in-phone" autocomplete="tel" maxlength="64" placeholder="So we can reach you" /></label>' +
     '<p class="nexura-lead-err" hidden></p>' +
     '<button type="button" class="nexura-lead-submit">Continue to chat</button>' +
     "</div>" +
@@ -154,12 +168,61 @@
   var inEmail = root.querySelector(".nexura-in-email");
   var inPhone = root.querySelector(".nexura-in-phone");
   var inLeadMsg = root.querySelector(".nexura-in-msg");
+  var contactHint = root.querySelector(".nexura-contact-hint");
+  var chkSkipEmail = root.querySelector(".nexura-chk-skip-email");
+  var chkSkipPhone = root.querySelector(".nexura-chk-skip-phone");
+  var rowEmail = root.querySelector(".nexura-row-email");
+  var rowPhone = root.querySelector(".nexura-row-phone");
   var leadErr = root.querySelector(".nexura-lead-err");
   var btnLead = root.querySelector(".nexura-lead-submit");
   var mainWrap = root.querySelector(".nexura-main-wrap");
   var msgs = root.querySelector(".nexura-msgs");
   var inp = root.querySelector(".nexura-inp");
   var btnSend = root.querySelector(".nexura-send");
+
+  function loadChatState() {
+    try {
+      var raw = sessionStorage.getItem(chatStateKey);
+      if (!raw) return;
+      var o = JSON.parse(raw);
+      if (!o || !Array.isArray(o.messages)) return;
+      chatState.messages = o.messages.filter(function (m) {
+        return (
+          m &&
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.text === "string"
+        );
+      });
+      chatState.welcome_done = !!o.welcome_done;
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function persistChatState() {
+    try {
+      sessionStorage.setItem(
+        chatStateKey,
+        JSON.stringify({
+          messages: chatState.messages,
+          welcome_done: chatState.welcome_done,
+        })
+      );
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function renderMessagesFromState() {
+    msgs.innerHTML = "";
+    chatState.messages.forEach(function (m) {
+      var div = document.createElement("div");
+      div.className = "nexura-msg " + (m.role === "user" ? "u" : "a");
+      div.textContent = m.text;
+      msgs.appendChild(div);
+    });
+    msgs.scrollTop = msgs.scrollHeight;
+  }
 
   var widgetCfg = {};
   var cfgLoaded = false;
@@ -203,12 +266,74 @@
     headTitle.textContent = t;
   }
 
+  function focusPanelPrimary() {
+    if (leadWrap.classList.contains("nexura-show")) inLeadMsg.focus();
+    else inp.focus();
+  }
+
+  function initAfterConfigLoaded() {
+    loadChatState();
+    renderMessagesFromState();
+    welcomeShown =
+      chatState.welcome_done || chatState.messages.length > 0;
+    if (autoOpen) {
+      toggle(true);
+      syncLeadVsChatLayout();
+      focusPanelPrimary();
+    }
+  }
+
   applyHeadTitle();
-  fetchWidgetConfig();
+  fetchWidgetConfig().then(function () {
+    initAfterConfigLoaded();
+  });
 
   function toggle(open) {
     panel.classList.toggle("open", open);
     launcher.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function emailLooksOk(s) {
+    var t = (s || "").trim();
+    if (!t) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+  }
+
+  function syncContactSkipUi() {
+    if (!chkSkipEmail || !chkSkipPhone || !rowEmail || !rowPhone) return;
+    var se = chkSkipEmail.checked;
+    var sp = chkSkipPhone.checked;
+    if (se && sp) chkSkipPhone.checked = false;
+    sp = chkSkipPhone.checked;
+    if (se) {
+      inEmail.value = "";
+      inEmail.disabled = true;
+      rowEmail.style.display = "none";
+      rowPhone.style.display = "";
+      inPhone.disabled = false;
+      return;
+    }
+    rowEmail.style.display = "";
+    inEmail.disabled = false;
+    if (sp) {
+      inPhone.value = "";
+      inPhone.disabled = true;
+      rowPhone.style.display = "none";
+    } else {
+      rowPhone.style.display = "";
+      inPhone.disabled = false;
+    }
+  }
+
+  if (chkSkipEmail && chkSkipPhone) {
+    chkSkipEmail.addEventListener("change", function () {
+      if (chkSkipEmail.checked) chkSkipPhone.checked = false;
+      syncContactSkipUi();
+    });
+    chkSkipPhone.addEventListener("change", function () {
+      if (chkSkipPhone.checked) chkSkipEmail.checked = false;
+      syncContactSkipUi();
+    });
   }
 
   function syncLeadVsChatLayout() {
@@ -218,7 +343,12 @@
     mainWrap.classList.toggle("nexura-show", !needLead);
     if (needLead) {
       leadIntro.textContent =
-        "Use the comment box above for context if you like. Name, email, and phone are required so our team can follow up.";
+        "Use the comment box above if you like. Your name is required; we need either an email or a phone number so our team can reach you.";
+      if (contactHint) {
+        contactHint.textContent =
+          "Use a checkbox only if you cannot provide one contact method. At least one of email or phone stays required.";
+      }
+      syncContactSkipUi();
       inp.disabled = true;
       btnSend.disabled = true;
     } else {
@@ -233,6 +363,7 @@
     var w = widgetCfg.welcome_message && String(widgetCfg.welcome_message).trim();
     if (w) {
       welcomeShown = true;
+      chatState.welcome_done = true;
       addMsg("assistant", w);
     }
   }
@@ -246,11 +377,7 @@
     function finalizeOpen() {
       toggle(true);
       syncLeadVsChatLayout();
-      if (leadWrap.classList.contains("nexura-show")) {
-        inLeadMsg.focus();
-      } else {
-        inp.focus();
-      }
+      focusPanelPrimary();
     }
     if (cfgLoaded) finalizeOpen();
     else fetchWidgetConfig().then(finalizeOpen);
@@ -279,6 +406,8 @@
   }
 
   function addMsg(role, text) {
+    chatState.messages.push({ role: role, text: text });
+    persistChatState();
     var div = document.createElement("div");
     div.className = "nexura-msg " + (role === "user" ? "u" : "a");
     div.textContent = text;
@@ -363,8 +492,27 @@
     var em = (inEmail.value || "").trim();
     var ph = (inPhone.value || "").trim();
     var lm = (inLeadMsg.value || "").trim();
-    if (!nm || !em || !ph) {
-      leadErr.textContent = "Name, email, and phone are required.";
+    var se = chkSkipEmail && chkSkipEmail.checked;
+    var sp = chkSkipPhone && chkSkipPhone.checked;
+    var err = "";
+    if (!nm) err = "Name is required.";
+    else if (se) {
+      if (!ph) err = "Phone is required when you skip email.";
+    } else if (sp) {
+      if (!emailLooksOk(em)) err = "A valid email is required when you skip phone.";
+    } else {
+      var hasPhone = !!ph;
+      var okEmail = emailLooksOk(em);
+      if (!hasPhone && !okEmail) {
+        if (em && !okEmail) {
+          err = "Email format looks invalid, or add a phone number.";
+        } else {
+          err = "Provide an email or a phone number, or choose a skip option.";
+        }
+      }
+    }
+    if (err) {
+      leadErr.textContent = err;
       leadErr.hidden = false;
       return;
     }
@@ -378,8 +526,8 @@
       body: JSON.stringify({
         visitor_session: visitorId(),
         name: nm,
-        email: em,
-        phone: ph || undefined,
+        email: se ? "" : em,
+        phone: sp ? "" : ph,
         message: lm || undefined,
       }),
     })
@@ -398,7 +546,7 @@
         }
         markLeadGatePassed();
         syncLeadVsChatLayout();
-        inp.focus();
+        focusPanelPrimary();
       })
       .catch(function () {
         leadErr.textContent = "Network error. Try again.";

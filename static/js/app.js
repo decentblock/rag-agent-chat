@@ -825,7 +825,8 @@
       '"\n  data-base-url="' +
       o +
       '"\n  data-collection-ids="general"></script>\n\n' +
-      '<!-- Change general to your KB slug(s), comma-separated, or remove data-collection-ids when the embed key already restricts collections (omit for all collections when key is unrestricted). -->';
+      "<!-- Opens enlarged automatically; transcript survives reload until the tab closes. Use data-auto-open=\"false\" for bubble-only. -->\n" +
+      "<!-- Change general to your KB slug(s), comma-separated, or remove data-collection-ids when the embed key already restricts collections (omit for all collections when key is unrestricted). -->";
   }
 
   async function loadEmbedBrandingForm() {

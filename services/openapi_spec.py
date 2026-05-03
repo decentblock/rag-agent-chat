@@ -150,11 +150,20 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                 },
                 "EmbedVisitorContactRequest": {
                     "type": "object",
-                    "required": ["name", "email", "phone", "visitor_session"],
+                    "required": ["name", "visitor_session"],
                     "properties": {
                         "name": {"type": "string", "maxLength": 255},
-                        "email": {"type": "string", "maxLength": 255},
-                        "phone": {"type": "string", "maxLength": 64},
+                        "email": {
+                            "type": "string",
+                            "maxLength": 255,
+                            "description": "Optional if phone is provided; both cannot be omitted.",
+                        },
+                        "phone": {
+                            "type": "string",
+                            "maxLength": 64,
+                            "nullable": True,
+                            "description": "Optional if email is provided; both cannot be omitted.",
+                        },
                         "message": {
                             "type": "string",
                             "nullable": True,
@@ -392,7 +401,7 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                     "tags": ["Embed"],
                     "summary": "Submit visitor details (embed contact gate)",
                     "description": (
-                        "Persists visitor submission: optional message (comment), name, email, and phone (all contact fields required). "
+                        "Persists visitor submission: optional message (comment), name, and at least one of email or phone. "
                         "Keyed by visitor_session. Same auth and Origin rules as embed chat."
                     ),
                     "operationId": "embedVisitorContact",

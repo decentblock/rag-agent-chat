@@ -27,21 +27,31 @@ def validate_visitor_lead_payload(body: dict) -> tuple[dict | None, str | None]:
 
     if not name or len(name) > 255:
         return None, "name is required (max 255 characters)"
-    if not email or len(email) > 255:
-        return None, "email is required"
-    if not _basic_email_ok(email):
-        return None, "email format looks invalid"
-    if not phone:
-        return None, "phone is required"
-    if len(phone) > 64:
-        return None, "phone is too long"
     if not visitor:
         return None, "visitor_session is required"
+    if len(email) > 255:
+        return None, "email is too long"
+    if phone and len(phone) > 64:
+        return None, "phone is too long"
+
+    has_phone = bool(phone)
+    email_norm = email
+    has_email = bool(email_norm)
+
+    if has_email and not _basic_email_ok(email_norm):
+        if has_phone:
+            email_norm = ""
+            has_email = False
+        else:
+            return None, "email format looks invalid"
+
+    if not has_email and not has_phone:
+        return None, "email or phone is required"
 
     return {
         "name": name,
-        "email": email,
-        "phone": phone,
+        "email": email_norm if has_email else "",
+        "phone": phone if has_phone else None,
         "initial_message": message,
         "visitor_session": visitor,
     }, None
@@ -64,7 +74,7 @@ def persist_visitor_lead(
         embed_key_id=embed_key_id,
         visitor_session=cleaned["visitor_session"],
         name=cleaned["name"],
-        email=cleaned["email"],
+        email=cleaned["email"] or "",
         phone=cleaned.get("phone"),
         initial_message=cleaned.get("initial_message"),
     )
