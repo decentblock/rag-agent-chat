@@ -410,6 +410,11 @@
           toast(err.message || "Team panel failed", "error")
         );
       }
+      if (tab === "library") {
+        loadTenantAiCredentials().catch((err) =>
+          toast(err.message || "Organisation AI settings failed", "error")
+        );
+      }
     });
   });
 
@@ -931,14 +936,14 @@
     const tbody = document.getElementById("embed-keys-body");
     if (!tbody) return;
     tbody.innerHTML =
-      '<tr><td colspan="6" class="muted center">Loading…</td></tr>';
+      '<tr><td colspan="7" class="muted center">Loading…</td></tr>';
     try {
       const data = await apiFetch("/api/v1/embed-keys");
       const keys = data.keys || [];
       embedKeysSnapshot = keys;
       if (!keys.length) {
         tbody.innerHTML =
-          '<tr><td colspan="6" class="muted center">No embed keys yet.</td></tr>';
+          '<tr><td colspan="7" class="muted center">No embed keys yet.</td></tr>';
         return;
       }
       tbody.innerHTML = keys
@@ -967,6 +972,16 @@
             '<button type="button" class="btn btn-secondary btn-sm btn-edit-embed-origins" data-id="' +
             escapeAttr(k.id) +
             '">Sites</button>';
+          const openaiLabel = k.has_openai_key
+            ? '<span class="badge badge-accent">BYOK</span>'
+            : '<span class="muted">Platform</span>';
+          let openaiCell = openaiLabel;
+          if (k.is_active) {
+            openaiCell +=
+              ' <button type="button" class="btn btn-secondary btn-sm btn-edit-embed-openai" data-id="' +
+              escapeAttr(k.id) +
+              '">Configure…</button>';
+          }
           const btnRevoke =
             '<button type="button" class="btn btn-ghost btn-sm btn-revoke-embed" data-id="' +
             escapeAttr(k.id) +
@@ -982,8 +997,10 @@
             escapeHtml(k.key_prefix || "") +
             "</code></td><td style=\"max-width:12rem;word-break:break-word;font-size:0.82rem\">" +
             kbCell +
-            '</td><td style="max-width:12rem;word-break:break-word;font-size:0.82rem">' +
+            '</td><td style="max-width:14rem;word-break:break-word;font-size:0.82rem">' +
             sitesLabel +
+            '</td><td style="font-size:0.82rem;max-width:11rem">' +
+            openaiCell +
             '</td><td><span class="badge ' +
             badge +
             '">' +
@@ -996,7 +1013,7 @@
         .join("");
     } catch (e) {
       tbody.innerHTML =
-        '<tr><td colspan="6" class="muted center">' +
+        '<tr><td colspan="7" class="muted center">' +
         escapeHtml(e.message || "Failed to load keys") +
         "</td></tr>";
     }
@@ -1394,6 +1411,27 @@
   });
 
   document.getElementById("embed-keys-body")?.addEventListener("click", async (ev) => {
+    const openaiBtn = ev.target.closest && ev.target.closest(".btn-edit-embed-openai");
+    if (openaiBtn) {
+      const id = openaiBtn.getAttribute("data-id");
+      const k = embedKeysSnapshot.find((x) => x.id === id);
+      const dlg = document.getElementById("embed-openai-dialog");
+      const hid = document.getElementById("embed-openai-key-id");
+      const baseInp = document.getElementById("embed-openai-base");
+      const secInp = document.getElementById("embed-openai-secret");
+      const remCb = document.getElementById("embed-openai-remove");
+      const title = document.getElementById("embed-openai-dialog-title");
+      if (!dlg || !hid || !baseInp || !secInp || !remCb || !k) return;
+      hid.value = id;
+      if (title) title.textContent = "OpenAI · " + (k.name || k.key_prefix || "");
+      baseInp.value = k.openai_api_base || "";
+      secInp.value = "";
+      remCb.checked = false;
+      dlg.showModal();
+      baseInp.focus();
+      return;
+    }
+
     const editBtn = ev.target.closest && ev.target.closest(".btn-edit-embed-origins");
     if (editBtn) {
       const id = editBtn.getAttribute("data-id");
@@ -1511,12 +1549,84 @@
     if (ev.target.id === "embed-origins-dialog") closeEmbedOriginsDialog();
   });
 
+  function closeEmbedOpenaiDialog() {
+    document.getElementById("embed-openai-dialog")?.close();
+  }
+
+  document.getElementById("embed-openai-dialog-save")?.addEventListener("click", async () => {
+    const hid = document.getElementById("embed-openai-key-id");
+    const baseEl = document.getElementById("embed-openai-base");
+    const secEl = document.getElementById("embed-openai-secret");
+    const remEl = document.getElementById("embed-openai-remove");
+    const id = hid && hid.value;
+    if (!id || !baseEl || !secEl || !remEl) return;
+    const body = { openai_api_base: baseEl.value.trim() };
+    if (remEl.checked) body.openai_api_key = "";
+    else if (secEl.value.trim()) body.openai_api_key = secEl.value.trim();
+    try {
+      await apiFetch("/api/v1/embed-keys/" + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      toast("OpenAI settings saved", "success");
+      closeEmbedOpenaiDialog();
+      await refreshEmbedKeysList();
+    } catch (e) {
+      toast(e.message || "Save failed", "error");
+    }
+  });
+
+  document.getElementById("embed-openai-dialog-cancel")?.addEventListener(
+    "click",
+    closeEmbedOpenaiDialog
+  );
+  document.getElementById("embed-openai-dialog-close")?.addEventListener(
+    "click",
+    closeEmbedOpenaiDialog
+  );
+  document.getElementById("embed-openai-dialog")?.addEventListener("click", (ev) => {
+    if (ev.target.id === "embed-openai-dialog") closeEmbedOpenaiDialog();
+  });
+
   /* Library */
   const collectionSelect = document.getElementById("collection-select");
   const documentsBody = document.getElementById("documents-body");
   const kbBootstrap = document.getElementById("nexura-console-bootstrap");
   const isSuperuserKb = !!(kbBootstrap && kbBootstrap.dataset.isSuperuser === "true");
   const defaultTenantIdKb = (kbBootstrap && kbBootstrap.dataset.currentTenantId) || "";
+  const canManageTenantAi = !!(kbBootstrap && kbBootstrap.dataset.canManageTenantAi === "true");
+
+  async function loadTenantAiCredentials() {
+    const statusEl = document.getElementById("tenant-ai-status");
+    const cb = document.getElementById("tenant-ai-exclusive");
+    const base = document.getElementById("tenant-ai-base");
+    const sec = document.getElementById("tenant-ai-secret");
+    if (!canManageTenantAi || !statusEl || !cb || !base || !sec) return;
+    statusEl.textContent = "Loading…";
+    try {
+      const d = await apiFetch("/api/v1/tenant/ai-credentials");
+      cb.checked = !!d.use_exclusive_openai;
+      base.value = d.openai_api_base || "";
+      sec.value = "";
+      const hasKey = !!d.has_stored_openai_key;
+      const exc = !!d.use_exclusive_openai;
+      const active = !!d.exclusive_active;
+      if (active) {
+        statusEl.textContent =
+          "Organisation exclusive OpenAI is active — embeddings and console chat use your stored key.";
+      } else if (exc && !hasKey) {
+        statusEl.textContent =
+          "Exclusive mode is on but no API key is stored — paste a key and save.";
+      } else {
+        statusEl.textContent =
+          "Using platform default OpenAI credentials for this organisation.";
+      }
+    } catch (e) {
+      statusEl.textContent = e.message || "Failed to load credentials";
+      toast(e.message || "Failed to load organisation AI settings", "error");
+    }
+  }
 
   function kbProbeTenantOptionalPayload() {
     if (!isSuperuserKb) return {};
@@ -1676,9 +1786,38 @@
     try {
       await loadCollections(true);
       await loadKbAuditEvents();
+      await loadTenantAiCredentials();
       toast("Library refreshed", "success");
     } catch (e) {
       toast(e.message || "Refresh failed", "error");
+    }
+  });
+
+  document.getElementById("btn-tenant-ai-save")?.addEventListener("click", async () => {
+    if (!canManageTenantAi) return;
+    const cb = document.getElementById("tenant-ai-exclusive");
+    const base = document.getElementById("tenant-ai-base");
+    const sec = document.getElementById("tenant-ai-secret");
+    if (!cb || !base || !sec) return;
+    const exclusive = !!cb.checked;
+    const body = { use_exclusive_openai: exclusive };
+    if (exclusive) {
+      const btrim = base.value.trim();
+      body.openai_api_base = btrim ? btrim : null;
+      const secretTrim = sec.value.trim();
+      if (secretTrim) body.openai_api_key = secretTrim;
+    }
+    try {
+      await apiFetch("/api/v1/tenant/ai-credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      sec.value = "";
+      toast("Organisation OpenAI settings saved", "success");
+      await loadTenantAiCredentials();
+    } catch (e) {
+      toast(e.message || "Save failed", "error");
     }
   });
 

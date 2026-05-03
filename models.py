@@ -50,6 +50,10 @@ class Tenant(db.Model):
     # JSON array of agent_id strings; when null/empty string, plan_catalog allowlist applies as-is.
     # Non-empty JSON overrides allowed agents for this tenant (whitelist).
     allowed_agent_ids_json = db.Column(db.Text, nullable=True)
+    # Optional BYOK for this organisation: embeddings + chat use tenant key when enabled.
+    use_exclusive_openai = db.Column(db.Boolean, default=False, nullable=False)
+    openai_api_key_cipher = db.Column(db.Text, nullable=True)
+    openai_api_base = db.Column(db.String(512), nullable=True)
     # Embeddable widget copy & analytics (org admins edit via console Embed panel).
     embed_agent_display_name = db.Column(db.String(255), nullable=True)
     embed_welcome_message = db.Column(db.Text, nullable=True)
@@ -265,6 +269,9 @@ class ApiKey(db.Model):
     allowed_embed_origins_json = db.Column(db.Text, nullable=True)
     default_agent_id = db.Column(db.String(64), nullable=True)
     agent_config_json = db.Column(db.Text, nullable=True)
+    # Optional BYOK: encrypted OpenAI key + optional API base for embed chat completions only.
+    openai_api_key_cipher = db.Column(db.Text, nullable=True)
+    openai_api_base = db.Column(db.String(512), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     tenant = db.relationship("Tenant", backref=db.backref("api_keys", lazy="dynamic"))

@@ -202,6 +202,47 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                     },
                     "description": "Omitted fields keep existing values where applicable.",
                 },
+                "TenantAiCredentials": {
+                    "type": "object",
+                    "properties": {
+                        "use_exclusive_openai": {
+                            "type": "boolean",
+                            "description": "When true, tenant embeddings and console chat use organisation credentials if a key is stored.",
+                        },
+                        "has_stored_openai_key": {
+                            "type": "boolean",
+                            "description": "Whether an encrypted API key exists (never returns the secret).",
+                        },
+                        "openai_api_base": {
+                            "type": "string",
+                            "nullable": True,
+                            "maxLength": 512,
+                            "description": "Optional OpenAI-compatible base URL when exclusive mode is active.",
+                        },
+                        "exclusive_active": {
+                            "type": "boolean",
+                            "description": "True when exclusive mode is on and a stored key exists.",
+                        },
+                    },
+                },
+                "TenantAiCredentialsPut": {
+                    "type": "object",
+                    "properties": {
+                        "use_exclusive_openai": {"type": "boolean"},
+                        "openai_api_base": {
+                            "type": "string",
+                            "nullable": True,
+                            "maxLength": 512,
+                            "description": "Applied only when exclusive is true; null or empty clears stored base.",
+                        },
+                        "openai_api_key": {
+                            "type": "string",
+                            "nullable": True,
+                            "description": "Applied only when exclusive is true; omit to keep existing key; empty clears (exclusive without key returns 400).",
+                        },
+                    },
+                    "description": "Disabling exclusive clears stored key and base on the server.",
+                },
                 "EmbedVisitorLeadsList": {
                     "type": "object",
                     "properties": {
@@ -471,8 +512,8 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
             "/api/v1/embed-keys/{key_id}": {
                 "patch": {
                     "tags": ["Embed"],
-                    "summary": "Update embed key allowed Origin sites",
-                    "operationId": "patchEmbedKeyOrigins",
+                    "summary": "Update embed key sites and/or OpenAI (BYOK) settings",
+                    "operationId": "patchEmbedKey",
                     "security": [{"SessionCookie": []}],
                     "parameters": [
                         {
@@ -488,19 +529,30 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                             "application/json": {
                                 "schema": {
                                     "type": "object",
+                                    "minProperties": 1,
                                     "properties": {
                                         "allowed_embed_origins": {
                                             "type": "array",
                                             "items": {"type": "string"},
                                             "description": "Empty array clears per-key list → platform CORS default",
-                                        }
+                                        },
+                                        "openai_api_key": {
+                                            "type": "string",
+                                            "description": "OpenAI-compatible API key for embed chat completions only; omit to leave unchanged, empty string clears stored key",
+                                            "nullable": True,
+                                        },
+                                        "openai_api_base": {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "description": "Optional API base URL; omit to leave unchanged, empty string clears",
+                                            "nullable": True,
+                                        },
                                     },
-                                    "required": ["allowed_embed_origins"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Updated origins"}},
+                    "responses": {"200": {"description": "Updated"}},
                 },
                 "delete": {
                     "tags": ["Embed"],
@@ -548,6 +600,58 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                         "200": {"description": "`{ ok: true }`"},
                         "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
                         "403": {"description": "Missing `embed:keys`"},
+                    },
+                },
+            },
+            "/api/v1/tenant/ai-credentials": {
+                "get": {
+                    "tags": ["Knowledge base"],
+                    "summary": "Organisation OpenAI credentials (BYOK)",
+                    "description": "Requires `collections:manage`. Never returns the API key; indicates whether exclusive mode and a stored key are active.",
+                    "operationId": "getTenantAiCredentials",
+                    "security": [{"SessionCookie": []}],
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {"schema": {"$ref": "#/components/schemas/TenantAiCredentials"}}
+                            }
+                        },
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {"description": "Missing `collections:manage`"},
+                    },
+                },
+                "put": {
+                    "tags": ["Knowledge base"],
+                    "summary": "Update organisation OpenAI credentials",
+                    "description": (
+                        "Requires `collections:manage`. Key and base are applied only while "
+                        "`use_exclusive_openai` is true; turning exclusive off clears stored credentials."
+                    ),
+                    "operationId": "putTenantAiCredentials",
+                    "security": [{"SessionCookie": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/TenantAiCredentialsPut"}}
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Saved; echoes flags like GET.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "allOf": [
+                                            {"type": "object", "properties": {"ok": {"type": "boolean"}}},
+                                            {"$ref": "#/components/schemas/TenantAiCredentials"},
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                        "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "401": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+                        "403": {"description": "Missing `collections:manage`"},
                     },
                 },
             },

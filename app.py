@@ -1,5 +1,6 @@
 import os
 import csv
+import json
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
@@ -282,6 +283,16 @@ def _ensure_api_keys_columns() -> None:
         "ALTER TABLE api_keys ADD COLUMN allowed_embed_origins_json TEXT",
         "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS allowed_embed_origins_json TEXT",
     )
+    add(
+        "openai_api_key_cipher",
+        "ALTER TABLE api_keys ADD COLUMN openai_api_key_cipher TEXT",
+        "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS openai_api_key_cipher TEXT",
+    )
+    add(
+        "openai_api_base",
+        "ALTER TABLE api_keys ADD COLUMN openai_api_base VARCHAR(512)",
+        "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS openai_api_base VARCHAR(512)",
+    )
 
     for sql in stmts:
         db.session.execute(text(sql))
@@ -396,6 +407,46 @@ def _ensure_tenant_embed_widget_columns() -> None:
         db.session.commit()
 
 
+def _ensure_tenant_openai_credentials_columns() -> None:
+    """Per-organisation optional OpenAI key + exclusive flag for embeddings and chat."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(db.engine)
+    if not insp.has_table("tenants"):
+        return
+    existing = {c["name"] for c in insp.get_columns("tenants")}
+    dialect = db.engine.dialect.name
+    stmts: list[str] = []
+
+    def add(name: str, sqlite_sql: str, pg_sql: str) -> None:
+        if name not in existing:
+            if dialect == "sqlite":
+                stmts.append(sqlite_sql)
+            elif dialect == "postgresql":
+                stmts.append(pg_sql)
+
+    add(
+        "use_exclusive_openai",
+        "ALTER TABLE tenants ADD COLUMN use_exclusive_openai BOOLEAN DEFAULT 0 NOT NULL",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS use_exclusive_openai BOOLEAN DEFAULT FALSE NOT NULL",
+    )
+    add(
+        "openai_api_key_cipher",
+        "ALTER TABLE tenants ADD COLUMN openai_api_key_cipher TEXT",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS openai_api_key_cipher TEXT",
+    )
+    add(
+        "openai_api_base",
+        "ALTER TABLE tenants ADD COLUMN openai_api_base VARCHAR(512)",
+        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS openai_api_base VARCHAR(512)",
+    )
+
+    for sql in stmts:
+        db.session.execute(text(sql))
+    if stmts:
+        db.session.commit()
+
+
 def init_database() -> None:
     with app.app_context():
         db.create_all()
@@ -404,6 +455,7 @@ def init_database() -> None:
         _ensure_user_is_superuser_column()
         _ensure_documents_kb_columns()
         _ensure_tenant_embed_widget_columns()
+        _ensure_tenant_openai_credentials_columns()
         seed_if_needed(
             default_tenant_slug=DEFAULT_TENANT_SLUG,
             default_tenant_name="Default organization",
@@ -647,6 +699,7 @@ def dashboard():
         can_audit_chat=user_has_permission(g.current_user, "documents:read"),
         can_delete_chat_audit=user_has_permission(g.current_user, "documents:write"),
         can_manage_embed=user_has_permission(g.current_user, "embed:keys"),
+        can_manage_tenant_ai=user_has_permission(g.current_user, "collections:manage"),
         chat_audit_colspan=7 if user_has_permission(g.current_user, "documents:write") else 6,
         spa_tabs_enabled=True,
     )
@@ -1349,6 +1402,14 @@ def embed_chat():
 
     try:
         from services.chat_query_audit import chat_response_for_client
+        from services.embed_openai_credentials import openai_runtime_for_embed_row
+
+        inv_meta = {}
+        ok_openai_key, ok_openai_base = openai_runtime_for_embed_row(row)
+        if ok_openai_key:
+            inv_meta["embed_openai_api_key"] = ok_openai_key
+            if ok_openai_base:
+                inv_meta["embed_openai_api_base"] = ok_openai_base
 
         result, err = run_chat_turn(
             tenant_id=str(row.tenant_id),
@@ -1361,6 +1422,7 @@ def embed_chat():
             llm_route=str(payload.get("llm_route", "platform_llm")),
             llm_config_ref=payload.get("llm_config_ref"),
             client_hint=payload.get("client_hint"),
+            invocation_metadata=inv_meta if inv_meta else None,
         )
         if err:
             audit(error_message=err)
@@ -1422,6 +1484,93 @@ def tenant_embed_branding_route():
     t.embed_collect_visitor_contact = collect
     db.session.commit()
     return jsonify({"ok": True}), 200
+
+
+@app.route("/api/v1/tenant/ai-credentials", methods=["GET", "PUT"])
+@login_required
+@permission_required("collections:manage")
+def tenant_ai_credentials_route():
+    """Organisation-wide OpenAI credentials for embeddings + chat (optional BYOK)."""
+    from services.tenant_openai_credentials import encrypt_tenant_openai_key
+
+    t = g.tenant
+    if request.method == "GET":
+        cipher = getattr(t, "openai_api_key_cipher", None)
+        has_stored = bool(cipher and str(cipher).strip())
+        use_exc = bool(getattr(t, "use_exclusive_openai", False))
+        return jsonify(
+            {
+                "use_exclusive_openai": use_exc,
+                "has_stored_openai_key": has_stored,
+                "openai_api_base": (getattr(t, "openai_api_base", None) or "").strip() or None,
+                "exclusive_active": bool(use_exc and has_stored),
+            }
+        )
+
+    body = request.get_json(force=True, silent=True) or {}
+
+    if "use_exclusive_openai" in body:
+        raw_use = body.get("use_exclusive_openai")
+        if isinstance(raw_use, bool):
+            use_exc = raw_use
+        elif isinstance(raw_use, str):
+            use_exc = raw_use.lower() in ("1", "true", "yes", "on")
+        else:
+            use_exc = bool(raw_use)
+        t.use_exclusive_openai = use_exc
+        if not use_exc:
+            t.openai_api_key_cipher = None
+            t.openai_api_base = None
+
+    if getattr(t, "use_exclusive_openai", False):
+        if "openai_api_key" in body:
+            raw_k = body.get("openai_api_key")
+            if raw_k is None or (isinstance(raw_k, str) and not str(raw_k).strip()):
+                t.openai_api_key_cipher = None
+            else:
+                try:
+                    t.openai_api_key_cipher = encrypt_tenant_openai_key(str(raw_k))
+                except ValueError as ve:
+                    return jsonify({"error": str(ve)}), 400
+
+        if "openai_api_base" in body:
+            bb = body.get("openai_api_base")
+            if bb is None or (isinstance(bb, str) and not str(bb).strip()):
+                t.openai_api_base = None
+            else:
+                s = str(bb).strip()
+                if len(s) > 512:
+                    return jsonify({"error": "openai_api_base is too long"}), 400
+                t.openai_api_base = s
+
+    cipher_now = getattr(t, "openai_api_key_cipher", None)
+    has_key = bool(cipher_now and str(cipher_now).strip())
+    if getattr(t, "use_exclusive_openai", False) and not has_key:
+        db.session.rollback()
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "Exclusive OpenAI is enabled but no API key is stored. "
+                        "Provide openai_api_key or disable exclusive mode."
+                    )
+                }
+            ),
+            400,
+        )
+
+    db.session.commit()
+    has_stored = bool(getattr(t, "openai_api_key_cipher", None) and str(t.openai_api_key_cipher).strip())
+    use_exc = bool(getattr(t, "use_exclusive_openai", False))
+    return jsonify(
+        {
+            "ok": True,
+            "use_exclusive_openai": use_exc,
+            "has_stored_openai_key": has_stored,
+            "openai_api_base": (getattr(t, "openai_api_base", None) or "").strip() or None,
+            "exclusive_active": bool(use_exc and has_stored),
+        }
+    )
 
 
 @app.route("/api/v1/tenant/embed-visitor-leads", methods=["GET"])
@@ -1649,28 +1798,76 @@ def create_embed_key_route():
 @login_required
 @permission_required("embed:keys")
 def patch_embed_key_route(key_id: str):
-    from services.embed_key_service import parse_allowed_embed_origins, update_embed_key_origins
+    from services.embed_key_service import normalize_allowed_embed_origins_payload, parse_allowed_embed_origins
+    from services.embed_openai_credentials import encrypt_openai_api_key
 
     body = request.get_json(force=True, silent=True) or {}
-    if "allowed_embed_origins" not in body:
+    row = ApiKey.query.filter_by(id=key_id, tenant_id=str(g.tenant.id)).first()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
+    changed = False
+
+    if "allowed_embed_origins" in body:
+        norm, err = normalize_allowed_embed_origins_payload(body.get("allowed_embed_origins"))
+        if err:
+            return jsonify({"error": err}), 400
+        row.allowed_embed_origins_json = json.dumps(norm) if norm else None
+        changed = True
+
+    if "openai_api_key" in body:
+        raw_k = body.get("openai_api_key")
+        if raw_k is None or (isinstance(raw_k, str) and not raw_k.strip()):
+            row.openai_api_key_cipher = None
+        else:
+            try:
+                row.openai_api_key_cipher = encrypt_openai_api_key(str(raw_k))
+            except ValueError as ve:
+                return jsonify({"error": str(ve)}), 400
+        changed = True
+
+    if "openai_api_base" in body:
+        bb = body.get("openai_api_base")
+        if bb is None or (isinstance(bb, str) and not bb.strip()):
+            row.openai_api_base = None
+        else:
+            s = str(bb).strip()
+            if len(s) > 512:
+                return jsonify({"error": "openai_api_base is too long"}), 400
+            row.openai_api_base = s
+        changed = True
+
+    if not changed:
         return (
             jsonify(
                 {
-                    "error": "allowed_embed_origins required (JSON array of https:// origins, or [] for platform default)"
+                    "error": (
+                        "Supply allowed_embed_origins, openai_api_key, and/or openai_api_base"
+                    )
                 }
             ),
             400,
         )
 
-    ok, err = update_embed_key_origins(
-        str(g.tenant.id), key_id, body.get("allowed_embed_origins")
-    )
-    if not ok:
-        status = 404 if err == "Key not found" else 400
-        return jsonify({"error": err or "Update failed"}), status
+    try:
+        db.session.commit()
+    except Exception:
+        logger.exception("patch embed key failed")
+        db.session.rollback()
+        return jsonify({"error": "Update failed"}), 500
 
-    row = ApiKey.query.filter_by(id=key_id, tenant_id=str(g.tenant.id)).first()
-    return jsonify({"ok": True, "allowed_embed_origins": parse_allowed_embed_origins(row)}), 200
+    cipher = getattr(row, "openai_api_key_cipher", None)
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "allowed_embed_origins": parse_allowed_embed_origins(row),
+                "has_openai_key": bool(cipher and str(cipher).strip()),
+                "openai_api_base": (getattr(row, "openai_api_base", None) or "").strip() or None,
+            }
+        ),
+        200,
+    )
 
 
 @app.route("/api/v1/embed-keys/<key_id>", methods=["DELETE"])
@@ -1928,7 +2125,12 @@ def kb_retrieval_probe():
         k_per = int(body.get("k_per_collection") or 8)
     except (TypeError, ValueError):
         k_per = 8
-    hits = merged_similarity_probe(names, query, k_per_collection=max(2, min(k_per, 24)))
+    hits = merged_similarity_probe(
+        names,
+        query,
+        tenant_id=tid,
+        k_per_collection=max(2, min(k_per, 24)),
+    )
 
     record_kb_audit(
         tenant_id=tid,

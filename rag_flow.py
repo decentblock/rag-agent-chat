@@ -11,8 +11,9 @@ def run_rag_only(
     session_id: str,
     tenant_id: str,
     chroma_collection_names: list[str],
+    llm=None,
 ) -> dict:
-    docs = merged_similarity_documents(chroma_collection_names, question)
+    docs = merged_similarity_documents(chroma_collection_names, question, tenant_id)
 
     logger.info(
         "rag_turn tenant=%s chroma_collections=%s retrieved_chunks=%s",
@@ -34,7 +35,7 @@ def run_rag_only(
             len(question or ""),
         )
 
-    chain = get_rag_chain_for_tenant(chroma_collection_names, tenant_id, session_id)
+    chain = get_rag_chain_for_tenant(chroma_collection_names, tenant_id, session_id, llm=llm)
     result = run_chain_with_memory_tenant(chain, question, tenant_id, session_id)
     answer = getattr(result, "content", str(result))
 

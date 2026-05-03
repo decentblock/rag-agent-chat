@@ -6,7 +6,7 @@
 {% block body_class %}page-dashboard{% endblock %}
 {% block body %}
 
-<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" data-current-tenant-id="{{ current_tenant_id }}" data-is-superuser="{{ 'true' if is_superuser else 'false' }}" data-can-delete-chat-audit="{{ 'true' if can_delete_chat_audit else 'false' }}" data-can-manage-embed="{{ 'true' if can_manage_embed else 'false' }}" hidden aria-hidden="true"></div>
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" data-current-tenant-id="{{ current_tenant_id }}" data-is-superuser="{{ 'true' if is_superuser else 'false' }}" data-can-delete-chat-audit="{{ 'true' if can_delete_chat_audit else 'false' }}" data-can-manage-embed="{{ 'true' if can_manage_embed else 'false' }}" data-can-manage-tenant-ai="{{ 'true' if can_manage_tenant_ai else 'false' }}" hidden aria-hidden="true"></div>
 
 <div class="app-shell">
   {% include "partials/console_sidebar.html" %}
@@ -136,6 +136,30 @@
 
     <section id="panel-library" class="panel" hidden>
       <div class="grid-stack">
+        {% if can_manage_tenant_ai %}
+        <article class="card card-elevated" id="tenant-ai-credentials-card">
+          <h3 class="card-title">Organisation OpenAI</h3>
+          <p class="muted card-lead" id="tenant-ai-status" style="margin-bottom:0.75rem;">—</p>
+          <p class="muted" style="margin:0 0 0.85rem;font-size:0.82rem;line-height:1.45;">
+            When enabled, this organisation uses your API key for <strong>embeddings</strong> (indexing, retrieval, probes) and for <strong>chat completions</strong> in the console.
+            Embed widgets still use each embed key’s optional OpenAI override first, then fall back to these organisation credentials, then the platform default.
+          </p>
+          <label class="field" style="display:flex;align-items:flex-start;gap:0.5rem;font-weight:600;">
+            <input type="checkbox" id="tenant-ai-exclusive" style="margin-top:0.2rem;" />
+            <span>Use organisation exclusive OpenAI credentials</span>
+          </label>
+          <label class="field">
+            <span class="field-label">API base URL (optional)</span>
+            <input type="url" id="tenant-ai-base" class="input" maxlength="512" placeholder="Leave empty for api.openai.com default" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field-label">API key</span>
+            <input type="password" id="tenant-ai-secret" class="input" autocomplete="new-password" placeholder="Paste key when enabling exclusive or replacing stored key" />
+          </label>
+          <button type="button" class="btn btn-primary" id="btn-tenant-ai-save">Save</button>
+        </article>
+        {% endif %}
+
         <article class="card card-elevated">
           <h3 class="card-title">Upload document</h3>
           <p class="muted card-lead">PDF or TXT · Editor role · RBAC enforced server‑side</p>
@@ -303,7 +327,7 @@
           <div class="card-head">
             <div>
               <h3 class="card-title">Active keys</h3>
-              <p class="muted card-lead">Prefix only · revoke if leaked.</p>
+              <p class="muted card-lead">Prefix only · optional OpenAI API key per key (BYOK) for embed chat completions · revoke if leaked.</p>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-embed-keys">Refresh</button>
           </div>
@@ -315,12 +339,13 @@
                   <th>Prefix</th>
                   <th>KB collections</th>
                   <th>Sites (origins)</th>
+                  <th>OpenAI</th>
                   <th>Status</th>
                   <th class="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="embed-keys-body">
-                <tr><td colspan="6" class="muted center">Loading…</td></tr>
+                <tr><td colspan="7" class="muted center">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -486,6 +511,37 @@
     <div style="display:flex;justify-content:flex-end;gap:0.65rem;margin-top:1.25rem;">
       <button type="button" class="btn btn-secondary" id="embed-origins-dialog-cancel">Cancel</button>
       <button type="button" class="btn btn-primary" id="embed-origins-dialog-save">Save</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="embed-openai-dialog" class="dialog sheet-wide">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <div>
+        <h3 id="embed-openai-dialog-title">OpenAI · embed key</h3>
+        <p class="muted" style="margin:0.25rem 0 0;font-size:0.88rem;">
+          Stored encrypted (app <code>SESSION_SECRET</code>). Used for <strong>chat completions</strong> from this embed key only; vector retrieval still uses the platform embedding credentials.
+        </p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="embed-openai-dialog-close">Close</button>
+    </header>
+    <input type="hidden" id="embed-openai-key-id" value="" />
+    <label class="field" style="margin-top:1rem;">
+      <span class="field-label">API base URL (optional)</span>
+      <input type="url" id="embed-openai-base" class="input" maxlength="512" placeholder="https://api.openai.com/v1 (leave empty for OpenAI default)" autocomplete="off" />
+    </label>
+    <label class="field">
+      <span class="field-label">API key</span>
+      <input type="password" id="embed-openai-secret" class="input" autocomplete="new-password" placeholder="Leave blank to keep existing · paste new key to replace" />
+    </label>
+    <label class="field" style="display:flex;align-items:center;gap:0.5rem;font-weight:500;">
+      <input type="checkbox" id="embed-openai-remove" />
+      <span>Remove stored OpenAI key (use platform default)</span>
+    </label>
+    <div style="display:flex;justify-content:flex-end;gap:0.65rem;margin-top:1.25rem;">
+      <button type="button" class="btn btn-secondary" id="embed-openai-dialog-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="embed-openai-dialog-save">Save</button>
     </div>
   </div>
 </dialog>

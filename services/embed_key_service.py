@@ -158,6 +158,8 @@ def list_embed_keys_payload(tenant_id: str) -> list[dict[str, Any]]:
             except json.JSONDecodeError:
                 cfg = {}
         slug_labels = collection_slugs_for_allowed_ids(tenant_id, allowed) if allowed else None
+        cipher = getattr(r, "openai_api_key_cipher", None)
+        api_base = getattr(r, "openai_api_base", None)
         out.append(
             {
                 "id": r.id,
@@ -169,6 +171,8 @@ def list_embed_keys_payload(tenant_id: str) -> list[dict[str, Any]]:
                 "allowed_embed_origins": parse_allowed_embed_origins(r),
                 "default_agent_id": r.default_agent_id,
                 "default_agent_config": cfg,
+                "has_openai_key": bool(cipher and str(cipher).strip()),
+                "openai_api_base": ((api_base or "").strip() or None),
                 "created_at": r.created_at.isoformat() + "Z",
             }
         )

@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from chroma_util import chroma_collection_name
-from clients import get_embeddings
+from clients import get_embeddings_for_tenant
 from config import CHROMA_DB_FILE_PATH, EMEDDING_MODEL
 from extensions import db
 from langchain_community.vectorstores import Chroma
@@ -42,8 +42,7 @@ def count_vectors_for_document_in_collection(
     document_id: str,
 ) -> int:
     """Chunk rows in Chroma matching tenant + document (metadata filter)."""
-    physical = chroma_collection_name(tenant_id, collection_uuid)
-    embeddings = get_embeddings()
+    embeddings = get_embeddings_for_tenant(str(tenant_id))
     vectordb = Chroma(
         collection_name=physical,
         embedding_function=embeddings,
@@ -142,12 +141,13 @@ def merged_similarity_probe(
     chroma_collection_names: list[str],
     query: str,
     *,
+    tenant_id: str,
     k_per_collection: int = 8,
 ) -> list[dict[str, Any]]:
     """Top matches with similarity scores across physical Chroma collections."""
     if not chroma_collection_names or not (query or "").strip():
         return []
-    embeddings = get_embeddings()
+    embeddings = get_embeddings_for_tenant(str(tenant_id))
     persist = chroma_persist_path()
     scored: list[tuple[float, Any]] = []
     for name in chroma_collection_names:

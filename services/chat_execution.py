@@ -31,6 +31,7 @@ def run_chat_turn(
     llm_route: str = "platform_llm",
     llm_config_ref: Any = None,
     client_hint: Any = None,
+    invocation_metadata: dict[str, Any] | None = None,
 ):
     ok_agent, agent_err = validate_agent_choice(agent_id)
     if not ok_agent:
@@ -41,6 +42,13 @@ def run_chat_turn(
 
     invoke_cfg = _agent_config_for_invoke(merged_cfg)
 
+    meta: dict[str, Any] = {
+        "agent_config": invoke_cfg,
+        "payload_hint": client_hint,
+    }
+    if invocation_metadata:
+        meta.update(invocation_metadata)
+
     ctx = AgentInvocationContext(
         tenant_id=str(tenant_id),
         user_id=str(user_id),
@@ -48,10 +56,7 @@ def run_chat_turn(
         allowed_collection_ids=allowed_collection_ids,
         llm_route=str(llm_route),
         llm_config_ref=llm_config_ref,
-        metadata={
-            "agent_config": invoke_cfg,
-            "payload_hint": client_hint,
-        },
+        metadata=meta,
     )
     inp = AgentRunInput(raw_prompt=chat_message.strip())
     try:

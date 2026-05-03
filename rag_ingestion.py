@@ -11,7 +11,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from chroma_util import chroma_collection_name
-from clients import get_embeddings
+from clients import get_embeddings_for_tenant
 from config import CHROMA_DB_FILE_PATH, EMEDDING_MODEL
 from extensions import db
 from logging_setup import logger
@@ -47,8 +47,8 @@ def load_and_chunk(file_path: str, module: str, chunk_size: int = 1000, chunk_ov
     return text_splitter.split_documents(documents)
 
 
-def insert_into_chroma(chunks, chroma_physical_name: str) -> int:
-    embeddings = get_embeddings()
+def insert_into_chroma(chunks, chroma_physical_name: str, tenant_id: str) -> int:
+    embeddings = get_embeddings_for_tenant(str(tenant_id))
 
     vectordb = Chroma.from_documents(
         documents=chunks,
@@ -123,7 +123,7 @@ def ingest_document_file(
             }
         )
     physical = chroma_collection_name(tenant_id, collection.id)
-    chunk_count = insert_into_chroma(chunks, physical)
+    chunk_count = insert_into_chroma(chunks, physical, tenant_id)
 
     detail = {
         "chroma_collection": physical,
@@ -210,7 +210,7 @@ def preview_chunks_db(
         .first()
     )
 
-    embeddings = get_embeddings()
+    embeddings = get_embeddings_for_tenant(str(tenant_id))
     physical = chroma_collection_name(tenant_id, coll.id)
     vectordb = Chroma(
         collection_name=physical,
@@ -252,7 +252,7 @@ def delete_document_for_tenant(tenant_id: str, collection_slug: str, file_name: 
         raise ValueError("Document not found in collection")
 
     physical = chroma_collection_name(tenant_id, coll.id)
-    embeddings = get_embeddings()
+    embeddings = get_embeddings_for_tenant(str(tenant_id))
     vectordb = Chroma(
         collection_name=physical,
         embedding_function=embeddings,

@@ -4,7 +4,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
-from clients import get_embeddings, get_llm
+from clients import get_embeddings, get_embeddings_for_tenant, get_llm, get_llm_for_tenant
 from config import CHROMA_DB_FILE_PATH, DEFAULT_COLLECTION_NAME, SEARCH_K
 from logging_setup import logger
 from memory_store import get_memory
@@ -152,12 +152,16 @@ def build_rag_chain(llm, retriever, memory):
     return chain
 
 
-def merged_similarity_documents(chroma_collection_names: list[str], question: str):
+def merged_similarity_documents(
+    chroma_collection_names: list[str],
+    question: str,
+    tenant_id: str,
+):
     """Retrieve across tenant-scoped physical Chroma collections (bounded).
     Empty collection list → no documents."""
     if not chroma_collection_names:
         return []
-    embeddings = get_embeddings()
+    embeddings = get_embeddings_for_tenant(str(tenant_id))
     persist = get_chroma_db_path()
     acc = []
     per = max(SEARCH_K, 4)
@@ -186,12 +190,22 @@ def merged_similarity_documents(chroma_collection_names: list[str], question: st
     return result
 
 
-def merged_search_runnable(chroma_collection_names: list[str]):
-    return RunnableLambda(lambda q: merged_similarity_documents(chroma_collection_names, q))
+def merged_search_runnable(chroma_collection_names: list[str], tenant_id: str):
+    tid = str(tenant_id)
+
+    return RunnableLambda(
+        lambda q: merged_similarity_documents(chroma_collection_names, q, tid),
+    )
 
 
-def get_rag_chain_for_tenant(chroma_collection_names: list[str], tenant_id: str, session_id: str):
-    llm = get_llm()
+def get_rag_chain_for_tenant(
+    chroma_collection_names: list[str],
+    tenant_id: str,
+    session_id: str,
+    llm=None,
+):
+    if llm is None:
+        llm = get_llm_for_tenant(str(tenant_id))
     memory = get_memory(tenant_id, session_id)
     prompt = make_rag_prompt()
     extractor = RunnableLambda(
@@ -199,7 +213,7 @@ def get_rag_chain_for_tenant(chroma_collection_names: list[str], tenant_id: str,
         if isinstance(x, dict) and "question" in x
         else (x if isinstance(x, str) else str(x))
     )
-    search_branch = merged_search_runnable(chroma_collection_names)
+    search_branch = merged_search_runnable(chroma_collection_names, str(tenant_id))
     guidelines_lambda = extractor | search_branch | RunnableLambda(format_doc)
     chain = (
         {

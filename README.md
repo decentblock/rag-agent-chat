@@ -55,6 +55,7 @@ After you run the app: **`/docs`** is the **Swagger/OpenAPI** explorer. **`FEATU
 - **`POST /chat`** — Session chat (KB source filenames are **not** returned to the client; they are stored in **`chat_query_audits`** — see **Chat audit** in the console).  
 - **`POST /api/embed/chat`** — JSON + embed API key header (same citation behaviour as **`/chat`**).  
 - **`GET /api/embed/widget-config`** · **`POST /api/embed/visitor-contact`** — Widget branding / optional contact gate: optional comment first, name, email **or** phone (at least one), optional “skip email” / “skip phone” checkboxes in the widget script (Bearer embed key + CORS).  
+- **`GET`/`POST`/`PATCH`/`DELETE /api/v1/embed-keys`** — Org-managed embed keys (**`embed:keys`**). **`PATCH`** updates allowed browser origins and/or **per-key OpenAI API key + base URL** (BYOK: encrypted at rest; used for embed **chat** completions only — embeddings stay on platform credentials).  
 - **`GET` / `PUT /api/v1/tenant/embed-branding`** · **`GET /api/v1/tenant/embed-visitor-leads`** (+ CSV export) — Org embed settings and visitor form submissions (**`embed:keys`**).  
 - **`GET /api/v1/tenant/chat-query-audit`** · **`DELETE /api/v1/tenant/chat-query-audit/<id>`** — Transcript audit (**`documents:read`** / **`documents:write`** for delete).  
 - **`/static/embed/nexura-chat.js`** — Customer-site widget (snippet in console **Embed** tab).
@@ -76,6 +77,7 @@ See **`docs/TECHNICAL.md`** for every route, permission, and request/response sh
 | `services/chat_execution.py` | Shared `run_chat_turn` for session + embed chat |
 | `services/chat_query_audit.py` | Persist chat transcripts + KB sources; strip citations from API responses |
 | `services/embed_key_service.py` | Mint / verify embed API keys |
+| `services/embed_openai_credentials.py` | Encrypt/decrypt per-embed OpenAI keys (BYOK) |
 | `services/embed_visitor_flow.py` | Widget public config + visitor lead validation |
 | `static/embed/nexura-chat.js` | Customer-site widget |
 | `docs/` | FEATURES_SUMMARY, DEPLOYMENT, TECHNICAL |

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections_service import list_chroma_physical_names, normalize_collection_filter
 
+from clients import get_llm, get_llm_for_openai, get_llm_for_tenant
+
 from ..base import AgentInvocationContext, AgentRunInput, AgentRunResult
 
 
@@ -71,11 +73,20 @@ def run_tenant_rag(
         )
 
     chroma_names = list_chroma_physical_names(ctx.tenant_id, normalized)
+    meta = ctx.metadata if isinstance(ctx.metadata, dict) else {}
+    e_key = meta.get("embed_openai_api_key")
+    e_base = meta.get("embed_openai_api_base")
+    llm = (
+        get_llm_for_openai(str(e_key).strip(), (str(e_base).strip() if e_base else None) or None)
+        if e_key and str(e_key).strip()
+        else get_llm_for_tenant(str(ctx.tenant_id))
+    )
     raw = get_answer(
         question,
         ctx.session_id or ctx.user_id,
         ctx.tenant_id,
         chroma_names,
+        llm=llm,
     )
 
     if isinstance(raw, dict):
