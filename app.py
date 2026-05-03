@@ -307,12 +307,53 @@ def _ensure_user_is_superuser_column() -> None:
         db.session.commit()
 
 
+def _ensure_documents_kb_columns() -> None:
+    """Indexed chunk stats + ingest snapshot JSON on documents."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(db.engine)
+    if not insp.has_table("documents"):
+        return
+    existing = {c["name"] for c in insp.get_columns("documents")}
+    dialect = db.engine.dialect.name
+    stmts: list[str] = []
+
+    def add(name: str, sqlite_sql: str, pg_sql: str) -> None:
+        if name not in existing:
+            if dialect == "sqlite":
+                stmts.append(sqlite_sql)
+            elif dialect == "postgresql":
+                stmts.append(pg_sql)
+
+    add(
+        "indexed_chunk_count",
+        "ALTER TABLE documents ADD COLUMN indexed_chunk_count INTEGER DEFAULT 0 NOT NULL",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS indexed_chunk_count INTEGER DEFAULT 0 NOT NULL",
+    )
+    add(
+        "indexed_at",
+        "ALTER TABLE documents ADD COLUMN indexed_at TIMESTAMP",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS indexed_at TIMESTAMP",
+    )
+    add(
+        "ingest_detail_json",
+        "ALTER TABLE documents ADD COLUMN ingest_detail_json TEXT",
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS ingest_detail_json TEXT",
+    )
+
+    for sql in stmts:
+        db.session.execute(text(sql))
+    if stmts:
+        db.session.commit()
+
+
 def init_database() -> None:
     with app.app_context():
         db.create_all()
         _ensure_tenant_plan_columns()
         _ensure_api_keys_columns()
         _ensure_user_is_superuser_column()
+        _ensure_documents_kb_columns()
         seed_if_needed(
             default_tenant_slug=DEFAULT_TENANT_SLUG,
             default_tenant_name="Default organization",
@@ -548,6 +589,7 @@ def dashboard():
         "dashboard.html",
         username=g.current_user.username,
         tenant_slug=g.tenant.slug,
+        current_tenant_id=g.tenant.id,
         app_origin=root,
         current_user_id=g.current_user.id,
         is_superuser=bool(getattr(g.current_user, "is_superuser", False)),
@@ -1309,6 +1351,7 @@ def upload_document():
                 collection=coll,
                 document=document,
                 module=module,
+                actor_user_id=g.current_user.id,
             )
         except Exception:
             db.session.rollback()
@@ -1356,6 +1399,19 @@ def delete_document():
             collection_slug=collection_name,
             file_name=file_name,
         )
+
+        coll_del = find_collection(str(g.tenant.id), collection_name)
+        from services.kb_debug import record_kb_audit
+
+        record_kb_audit(
+            tenant_id=str(g.tenant.id),
+            actor_user_id=g.current_user.id,
+            event_type="document_deleted",
+            message=f"Deleted document {file_name} from collection {collection_name}",
+            collection_id=coll_del.id if coll_del else None,
+            payload={"file_name": file_name, "collection_slug": collection_name},
+        )
+        db.session.commit()
 
         return jsonify(
             {
@@ -1418,6 +1474,122 @@ def get_chunks():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/v1/kb/documents/<document_id>/index-debug", methods=["GET"])
+@login_required
+@permission_required("documents:read")
+def kb_document_index_debug(document_id: str):
+    from services.kb_debug import (
+        build_document_index_debug,
+        get_document_for_tenant,
+        resolve_kb_admin_tenant_id,
+    )
+
+    is_super = bool(getattr(g.current_user, "is_superuser", False))
+    tid, err = resolve_kb_admin_tenant_id(
+        current_tenant_id=str(g.tenant.id),
+        is_superuser=is_super,
+        requested_tenant_id=request.args.get("tenant_id"),
+    )
+    if err:
+        return jsonify({"error": err}), 400
+
+    doc = get_document_for_tenant(document_id, tid)
+    if not doc:
+        return jsonify({"error": "Document not found"}), 404
+
+    return jsonify(build_document_index_debug(doc))
+
+
+@app.route("/api/v1/kb/retrieval-probe", methods=["POST"])
+@login_required
+@permission_required("documents:read")
+def kb_retrieval_probe():
+    from collections_service import list_chroma_physical_names, normalize_collection_filter
+
+    from services.kb_debug import merged_similarity_probe, record_kb_audit, resolve_kb_admin_tenant_id
+
+    body = request.get_json(force=True, silent=True) or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return jsonify({"error": "query is required"}), 400
+
+    is_super = bool(getattr(g.current_user, "is_superuser", False))
+    req_tid = body.get("tenant_id") if isinstance(body.get("tenant_id"), str) else None
+    tid, err = resolve_kb_admin_tenant_id(
+        current_tenant_id=str(g.tenant.id),
+        is_superuser=is_super,
+        requested_tenant_id=req_tid,
+    )
+    if err:
+        return jsonify({"error": err}), 400
+
+    raw_scope = body.get("collection_slugs") or body.get("collection_ids")
+    allowed: tuple[str, ...] = ()
+    if isinstance(raw_scope, list) and raw_scope:
+        allowed = normalize_collection_filter(tid, tuple(str(x) for x in raw_scope))
+        if not allowed:
+            return jsonify({"error": "No matching collections for scope"}), 400
+
+    names = list_chroma_physical_names(tid, allowed)
+    try:
+        k_per = int(body.get("k_per_collection") or 8)
+    except (TypeError, ValueError):
+        k_per = 8
+    hits = merged_similarity_probe(names, query, k_per_collection=max(2, min(k_per, 24)))
+
+    record_kb_audit(
+        tenant_id=tid,
+        actor_user_id=g.current_user.id,
+        event_type="retrieval_probe",
+        message=f"Retrieval probe — {len(hits)} hit(s)",
+        payload={
+            "query_preview": query[:240],
+            "collections_requested": raw_scope if isinstance(raw_scope, list) else None,
+            "chroma_collections": names,
+            "hit_count": len(hits),
+        },
+    )
+    db.session.commit()
+
+    return jsonify(
+        {
+            "query": query,
+            "tenant_id": tid,
+            "chroma_collections_searched": names,
+            "hits": hits,
+            "hint_if_empty": (
+                "No chunks matched. Confirm collection scope matches embed key restrictions, "
+                "documents finished indexing (see Index debug), and embeddings are configured."
+                if not hits
+                else None
+            ),
+        }
+    )
+
+
+@app.route("/api/v1/kb/audit-events", methods=["GET"])
+@login_required
+@permission_required("documents:read")
+def kb_audit_events_list():
+    from services.kb_debug import audit_events_payload, resolve_kb_admin_tenant_id
+
+    is_super = bool(getattr(g.current_user, "is_superuser", False))
+    tid, err = resolve_kb_admin_tenant_id(
+        current_tenant_id=str(g.tenant.id),
+        is_superuser=is_super,
+        requested_tenant_id=request.args.get("tenant_id"),
+    )
+    if err:
+        return jsonify({"error": err}), 400
+
+    try:
+        lim = int(request.args.get("limit", "40"))
+    except ValueError:
+        lim = 40
+
+    return jsonify({"tenant_id": tid, "events": audit_events_payload(tid, limit=lim)})
 
 
 @app.route("/api/agents", methods=["GET"])

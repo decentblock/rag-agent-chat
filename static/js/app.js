@@ -1008,6 +1008,65 @@
   /* Library */
   const collectionSelect = document.getElementById("collection-select");
   const documentsBody = document.getElementById("documents-body");
+  const kbBootstrap = document.getElementById("nexura-console-bootstrap");
+  const isSuperuserKb = !!(kbBootstrap && kbBootstrap.dataset.isSuperuser === "true");
+  const defaultTenantIdKb = (kbBootstrap && kbBootstrap.dataset.currentTenantId) || "";
+
+  function kbProbeTenantOptionalPayload() {
+    if (!isSuperuserKb) return {};
+    const el = document.getElementById("kb-probe-tenant-id");
+    const raw = el ? String(el.value || "").trim() : "";
+    if (raw && raw !== defaultTenantIdKb) return { tenant_id: raw };
+    return {};
+  }
+
+  function kbIndexDebugUrlSuffix() {
+    if (!isSuperuserKb) return "";
+    const el = document.getElementById("kb-probe-tenant-id");
+    const raw = el ? String(el.value || "").trim() : "";
+    if (raw && raw !== defaultTenantIdKb)
+      return "?tenant_id=" + encodeURIComponent(raw);
+    return "";
+  }
+
+  async function loadKbAuditEvents() {
+    const ul = document.getElementById("kb-audit-events");
+    if (!ul) return;
+    const qs = new URLSearchParams({ limit: "35" });
+    if (isSuperuserKb) {
+      const el = document.getElementById("kb-probe-tenant-id");
+      const raw = el ? String(el.value || "").trim() : "";
+      if (raw) qs.set("tenant_id", raw);
+    }
+    ul.innerHTML = '<li class="muted">Loading…</li>';
+    try {
+      const data = await apiFetch("/api/v1/kb/audit-events?" + qs.toString());
+      const evs = data.events || [];
+      if (!evs.length) {
+        ul.innerHTML = '<li class="muted">No KB audit rows yet (uploads and probes appear here).</li>';
+        return;
+      }
+      ul.innerHTML = evs
+        .map((e) => {
+          const t = e.created_at || "";
+          const ty = escapeHtml(e.event_type || "");
+          const msg = escapeHtml(e.message || "");
+          return (
+            "<li style=\"margin-bottom:0.35rem;\"><time>" +
+            escapeHtml(t) +
+            "</time> · <code>" +
+            ty +
+            "</code> — " +
+            msg +
+            "</li>"
+          );
+        })
+        .join("");
+    } catch (err) {
+      ul.innerHTML =
+        '<li class="muted">' + escapeHtml(err.message || "Audit load failed") + "</li>";
+    }
+  }
 
   async function loadCollections(preserveSelection) {
     const prev = preserveSelection ? collectionSelect?.value : "";
@@ -1042,7 +1101,7 @@
     const name = collectionSelect.value.trim();
     if (!name) {
       documentsBody.innerHTML =
-        '<tr><td colspan="3" class="muted center">Choose a collection to list documents (tenant-wide chat works without selecting).</td></tr>';
+        '<tr><td colspan="4" class="muted center">Choose a collection to list documents (tenant-wide chat works without selecting).</td></tr>';
       return;
     }
     try {
@@ -1053,18 +1112,23 @@
       const docs = data.documents || [];
       if (!docs.length) {
         documentsBody.innerHTML =
-          '<tr><td colspan="3" class="muted center">No documents in this collection.</td></tr>';
+          '<tr><td colspan="4" class="muted center">No documents in this collection.</td></tr>';
         return;
       }
       documentsBody.innerHTML = docs
         .map((d) => {
           const fn = d.file_name || "";
           const mod = d.module || "";
+          const nchunks =
+            d.indexed_chunk_count != null ? String(d.indexed_chunk_count) : "—";
+          const docId = d.document_id || "";
           return `<tr data-file="${escapeAttr(fn)}">
             <td>${escapeHtml(fn)}</td>
+            <td><code>${escapeHtml(nchunks)}</code></td>
             <td>${escapeHtml(mod)}</td>
             <td class="col-actions"><div class="row-actions">
               <button type="button" class="btn btn-secondary btn-sm btn-preview" data-file="${escapeAttr(fn)}">Chunks</button>
+              <button type="button" class="btn btn-secondary btn-sm btn-index-debug" data-doc-id="${escapeAttr(docId)}" data-file="${escapeAttr(fn)}">Index debug</button>
               <button type="button" class="btn btn-ghost btn-sm btn-delete" data-file="${escapeAttr(fn)}">Delete</button>
             </div></td>
           </tr>`;
@@ -1072,7 +1136,7 @@
         .join("");
     } catch (e) {
       documentsBody.innerHTML =
-        '<tr><td colspan="3" class="muted center">' +
+        '<tr><td colspan="4" class="muted center">' +
         escapeHtml(e.message || String(e)) +
         "</td></tr>";
       toast(e.message || "Failed to load documents", "error");
@@ -1084,9 +1148,67 @@
   document.getElementById("btn-refresh-library")?.addEventListener("click", async () => {
     try {
       await loadCollections(true);
+      await loadKbAuditEvents();
       toast("Library refreshed", "success");
     } catch (e) {
       toast(e.message || "Refresh failed", "error");
+    }
+  });
+
+  const kbSuperField = document.getElementById("kb-super-tenant-field");
+  if (kbSuperField) kbSuperField.hidden = !isSuperuserKb;
+
+  document.getElementById("kb-probe-tenant-id")?.addEventListener("change", () => {
+    loadKbAuditEvents().catch(() => {});
+  });
+
+  document.getElementById("btn-kb-audit-refresh")?.addEventListener("click", () => {
+    loadKbAuditEvents().catch((e) =>
+      toast(e.message || "Audit refresh failed", "error")
+    );
+  });
+
+  document.getElementById("btn-kb-retrieval-probe")?.addEventListener("click", async () => {
+    const ta = document.getElementById("kb-probe-query");
+    const q = ta ? ta.value.trim() : "";
+    if (!q) {
+      toast("Enter a question for the probe", "error");
+      return;
+    }
+    const scopeCb = document.getElementById("kb-probe-scope-collection");
+    const scopeColl =
+      scopeCb &&
+      scopeCb.checked &&
+      collectionSelect &&
+      collectionSelect.value.trim();
+    if (scopeCb && scopeCb.checked && !scopeColl) {
+      toast("Pick a collection above or turn off “limit to selected collection”", "error");
+      return;
+    }
+    const out = document.getElementById("kb-probe-result");
+    if (out) out.textContent = "Running probe…";
+    try {
+      const body = {
+        query: q,
+        ...kbProbeTenantOptionalPayload(),
+      };
+      if (scopeColl) body.collection_slugs = [collectionSelect.value.trim()];
+      const data = await apiFetch("/api/v1/kb/retrieval-probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (out) out.textContent = JSON.stringify(data, null, 2);
+      toast(
+        data.hits && data.hits.length
+          ? "Probe returned " + data.hits.length + " chunk(s)"
+          : "Probe returned no chunks — see JSON hints",
+        data.hits && data.hits.length ? "success" : "error"
+      );
+      await loadKbAuditEvents();
+    } catch (e) {
+      if (out) out.textContent = e.message || "Probe failed";
+      toast(e.message || "Probe failed", "error");
     }
   });
 
@@ -1108,10 +1230,17 @@
       const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error || res.statusText);
       toast(data.message || "Upload complete", "success");
+      if (data.result && data.result.warning === "no_chunks_extracted") {
+        toast(
+          "Upload saved but no text chunks were extracted (often scanned PDF). Index debug will show 0 chunks.",
+          "error"
+        );
+      }
       form.reset();
       const mod = form.querySelector("[name=module]");
       if (mod) mod.value = "DEFAULT";
       await loadCollections(true);
+      await loadKbAuditEvents();
     } catch (e) {
       toast(e.message || "Upload failed", "error");
     }
@@ -1129,6 +1258,19 @@
 
   chunksDialog?.addEventListener("click", (ev) => {
     if (ev.target === chunksDialog) chunksDialog.close();
+  });
+
+  const kbDbgDlg = document.getElementById("kb-index-debug-dialog");
+  const kbDbgBody = document.getElementById("kb-index-debug-body");
+  const kbDbgTitle = document.getElementById("kb-index-debug-title");
+  const kbDbgSub = document.getElementById("kb-index-debug-sub");
+
+  document.getElementById("kb-index-debug-close")?.addEventListener("click", () => {
+    kbDbgDlg?.close();
+  });
+
+  kbDbgDlg?.addEventListener("click", (ev) => {
+    if (ev.target === kbDbgDlg) kbDbgDlg.close();
   });
 
   documentsBody?.addEventListener("click", async (ev) => {
@@ -1152,8 +1294,32 @@
         });
         toast("Document removed", "success");
         await loadDocumentsForSelection();
+        await loadKbAuditEvents();
       } catch (e) {
         toast(e.message || "Delete failed", "error");
+      }
+      return;
+    }
+
+    const dbgBtn = t.closest(".btn-index-debug");
+    if (dbgBtn) {
+      const docId = dbgBtn.getAttribute("data-doc-id");
+      const file = dbgBtn.getAttribute("data-file") || "";
+      if (!docId) return;
+      try {
+        const url =
+          "/api/v1/kb/documents/" +
+          encodeURIComponent(docId) +
+          "/index-debug" +
+          kbIndexDebugUrlSuffix();
+        const raw = await apiFetch(url);
+        if (kbDbgTitle) kbDbgTitle.textContent = "Index debug";
+        if (kbDbgSub) kbDbgSub.textContent = collection + " · " + file;
+        if (kbDbgBody) kbDbgBody.textContent = JSON.stringify(raw, null, 2);
+        kbDbgDlg?.showModal();
+        document.getElementById("kb-index-debug-close")?.focus();
+      } catch (e) {
+        toast(e.message || "Index debug failed", "error");
       }
       return;
     }
@@ -1206,9 +1372,9 @@
   refreshMarketplace().catch((e) =>
     toast(e.message || "Marketplace bootstrap failed", "error")
   );
-  loadCollections(false).catch((e) =>
-    toast(e.message || "Library load failed", "error")
-  );
+  loadCollections(false)
+    .then(() => loadKbAuditEvents())
+    .catch((e) => toast(e.message || "Library load failed", "error"));
 
   const tabParam = new URLSearchParams(window.location.search).get("tab");
   if (tabParam && panelCopy[tabParam]) {

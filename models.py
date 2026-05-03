@@ -155,6 +155,10 @@ class Document(db.Model):
     byte_size = db.Column(db.BigInteger, default=0)
     status = db.Column(db.String(32), default="ready", nullable=False)
     module_tag = db.Column(db.String(128), default="DEFAULT", nullable=False)
+    # Last successful embedding index (see ingest_detail_json for model/path snapshot).
+    indexed_chunk_count = db.Column(db.Integer, nullable=False, default=0)
+    indexed_at = db.Column(db.DateTime, nullable=True)
+    ingest_detail_json = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     tenant = db.relationship("Tenant", backref=db.backref("documents", lazy="dynamic"))
     uploader = db.relationship("User", backref=db.backref("documents_uploaded", lazy="dynamic"))
@@ -163,6 +167,26 @@ class Document(db.Model):
         secondary=document_collections,
         lazy="selectin",
     )
+
+
+class KbAuditEvent(db.Model):
+    """Org-visible timeline for ingest, retrieval probes, and deletes (admin / super admin)."""
+
+    __tablename__ = "kb_audit_events"
+
+    id = db.Column(db.String(36), primary_key=True, default=_uuid)
+    tenant_id = db.Column(db.String(36), db.ForeignKey("tenants.id"), nullable=False, index=True)
+    actor_user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True, index=True)
+    event_type = db.Column(db.String(64), nullable=False, index=True)
+    # Loose refs so rows survive document/collection deletion.
+    document_id = db.Column(db.String(36), nullable=True, index=True)
+    collection_id = db.Column(db.String(36), nullable=True, index=True)
+    message = db.Column(db.String(512), nullable=False, default="")
+    payload_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    tenant = db.relationship("Tenant", backref=db.backref("kb_audit_events", lazy="dynamic"))
+    actor = db.relationship("User", foreign_keys=[actor_user_id])
 
 
 class UserAgentPreference(db.Model):

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexura embed — local test</title>
+  <!--
+    HOW TO USE
+    1. Replace BASE_URL and API_KEY below (or pass ?base=...&key=... in the URL).
+    2. Serve this file over HTTP so the browser sends a real Origin (file:// is unreliable):
+         cd examples && python3 -m http.server 8765
+       Then open http://127.0.0.1:8765/embed-test-page.html
+    3. Allow that Origin everywhere needed:
+       - Per embed key: Dashboard → Embed → Sites / allowed_embed_origins for THIS key
+       - Or platform fallback: Super admin → Platform settings → Embed widget · CORS
+         Include exactly: http://127.0.0.1:8765 (scheme + host + port).
+    4. chat widget loads from BASE_URL; requests go to BASE_URL/api/embed/chat.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+    code { background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Nexura embed test</h1>
+  <p>Open DevTools → Network to verify <code>OPTIONS</code> and <code>POST /api/embed/chat</code>.</p>
+  <p id="cfg" class="muted"></p>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var BASE_URL = params.get("base") || "https://YOUR-NEXURA-HOST";
+      var API_KEY = params.get("key") || "YOUR_NXEMB_FULL_SECRET";
+      document.getElementById("cfg").textContent =
+        "base=" + BASE_URL + " · key prefix=" + (API_KEY.slice(0, 20) || "(missing)") + "…";
+
+      if (!API_KEY || API_KEY.indexOf("YOUR_") === 0 || !BASE_URL || BASE_URL.indexOf("YOUR-") === 0) {
+        document.body.insertAdjacentHTML(
+          "beforeend",
+          '<p style="color:#b45309"><strong>Edit this file</strong> or use <code>?base=https://app.example.com&key=nxemb_...</code></p>'
+        );
+        return;
+      }
+
+      var s = document.createElement("script");
+      s.defer = true;
+      s.src = BASE_URL.replace(/\/$/, "") + "/static/embed/nexura-chat.js";
+      s.setAttribute("data-api-key", API_KEY);
+      s.setAttribute("data-base-url", BASE_URL.replace(/\/$/, ""));
+      s.setAttribute("data-title", "Test chat");
+      document.body.appendChild(s);
+    })();
+  </script>
+</body>
+</html>

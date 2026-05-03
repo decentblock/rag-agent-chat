@@ -441,6 +441,78 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                     "responses": {"200": {"description": "`{ chunks: [...] }`"}},
                 }
             },
+            "/api/v1/kb/documents/{document_id}/index-debug": {
+                "get": {
+                    "tags": ["Knowledge base"],
+                    "summary": "Verify embeddings vs DB after upload",
+                    "operationId": "kbDocumentIndexDebug",
+                    "security": [{"SessionCookie": []}],
+                    "parameters": [
+                        {"name": "document_id", "in": "path", "required": True, "schema": {"type": "string"}},
+                        {
+                            "name": "tenant_id",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "string"},
+                            "description": "Superusers only — target organisation UUID.",
+                        },
+                    ],
+                    "responses": {
+                        "200": {"description": "Chroma counts, warnings, troubleshooting hints"},
+                        "404": {},
+                    },
+                }
+            },
+            "/api/v1/kb/retrieval-probe": {
+                "post": {
+                    "tags": ["Knowledge base"],
+                    "summary": "Test vector retrieval (same path as chat)",
+                    "operationId": "kbRetrievalProbe",
+                    "security": [{"SessionCookie": []}],
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "query": {"type": "string"},
+                                        "collection_slugs": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Empty/unset = all tenant collections",
+                                        },
+                                        "tenant_id": {
+                                            "type": "string",
+                                            "description": "Superusers only — probe another org",
+                                        },
+                                        "k_per_collection": {"type": "integer"},
+                                    },
+                                    "required": ["query"],
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {}, "400": {}},
+                }
+            },
+            "/api/v1/kb/audit-events": {
+                "get": {
+                    "tags": ["Knowledge base"],
+                    "summary": "KB audit timeline (ingest, probes, deletes)",
+                    "operationId": "kbAuditEvents",
+                    "security": [{"SessionCookie": []}],
+                    "parameters": [
+                        {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+                        {
+                            "name": "tenant_id",
+                            "in": "query",
+                            "schema": {"type": "string"},
+                            "description": "Superusers only",
+                        },
+                    ],
+                    "responses": {"200": {}},
+                }
+            },
             "/api/agents": {
                 "get": {
                     "tags": ["Knowledge base"],

@@ -6,7 +6,7 @@
 {% block body_class %}page-dashboard{% endblock %}
 {% block body %}
 
-<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" hidden aria-hidden="true"></div>
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" data-current-tenant-id="{{ current_tenant_id }}" data-is-superuser="{{ 'true' if is_superuser else 'false' }}" hidden aria-hidden="true"></div>
 
 <div class="app-shell">
   {% include "partials/console_sidebar.html" %}
@@ -115,7 +115,7 @@
           <div class="card-head">
             <div>
               <h3 class="card-title">Collections &amp; documents</h3>
-              <p class="muted card-lead">Tenant‑scoped listing · previews embed retrieval chunks only.</p>
+              <p class="muted card-lead">Tenant‑scoped listing · previews embed retrieval chunks only · <strong>Debug</strong> verifies Chroma vs database.</p>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-library">Refresh</button>
           </div>
@@ -132,15 +132,45 @@
               <thead>
                 <tr>
                   <th>File</th>
+                  <th>Chunks</th>
                   <th>Module</th>
                   <th class="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="documents-body">
-                <tr><td colspan="3" class="muted center">Pick a collection to see rows.</td></tr>
+                <tr><td colspan="4" class="muted center">Pick a collection to see rows.</td></tr>
               </tbody>
             </table>
           </div>
+        </article>
+
+        <article class="card card-elevated">
+          <div class="card-head">
+            <div>
+              <h3 class="card-title">Diagnostics &amp; audit log</h3>
+              <p class="muted card-lead">
+                Use <strong>Index debug</strong> on a document row above to verify Chroma vs the database.
+                <strong>Retrieval probe</strong> runs the same vector search as chat/embed and lists top chunks with similarity distances.
+              </p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-kb-audit-refresh">Refresh log</button>
+          </div>
+          <label class="field" id="kb-super-tenant-field" hidden>
+            <span class="field-label">Target organisation ID <span class="muted">(superusers)</span></span>
+            <input type="text" id="kb-probe-tenant-id" class="input" placeholder="Tenant UUID — blank = current org" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field-label">Retrieval probe · question</span>
+            <textarea id="kb-probe-query" class="input textarea" rows="2" placeholder="Same wording as a failing embed or chat question…"></textarea>
+          </label>
+          <label class="field" style="display:flex;align-items:flex-start;gap:0.5rem;">
+            <input type="checkbox" id="kb-probe-scope-collection" checked style="margin-top:0.2rem;" />
+            <span style="font-size:0.88rem;">Limit probe to the collection selected above <span class="muted">(unchecked = search every tenant collection — matches unrestricted embed keys)</span></span>
+          </label>
+          <button type="button" class="btn btn-primary" id="btn-kb-retrieval-probe">Run retrieval probe</button>
+          <pre id="kb-probe-result" class="code-block muted empty" style="margin-top:0.85rem;max-height:14rem;overflow:auto;font-size:0.78rem;white-space:pre-wrap;">—</pre>
+          <h4 style="margin:1.15rem 0 0.5rem;font-size:0.95rem;">Recent KB events</h4>
+          <ul id="kb-audit-events" class="muted" style="font-size:0.82rem;max-height:11rem;overflow:auto;margin:0;padding-left:1.15rem;"></ul>
         </article>
       </div>
     </section>
@@ -334,6 +364,17 @@
       <button type="button" class="btn btn-secondary" id="embed-origins-dialog-cancel">Cancel</button>
       <button type="button" class="btn btn-primary" id="embed-origins-dialog-save">Save</button>
     </div>
+  </div>
+</dialog>
+
+<dialog id="kb-index-debug-dialog" class="dialog sheet-wide">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h3 id="kb-index-debug-title">Index debug</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="kb-index-debug-close">Close</button>
+    </header>
+    <p class="muted" id="kb-index-debug-sub" style="margin:0 0 0.5rem;font-size:0.85rem;"></p>
+    <pre id="kb-index-debug-body" class="code-block" style="white-space:pre-wrap;font-size:0.78rem;max-height:22rem;overflow:auto;"></pre>
   </div>
 </dialog>
 

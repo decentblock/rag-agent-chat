@@ -5,14 +5,16 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 from clients import get_embeddings, get_llm
-from config import CHROMA_DB_DIR, DEFAULT_COLLECTION_NAME, SEARCH_K
+from config import CHROMA_DB_FILE_PATH, DEFAULT_COLLECTION_NAME, SEARCH_K
+from logging_setup import logger
 from memory_store import get_memory
 
 
 
 def get_chroma_db_path() -> str:
-    Path(CHROMA_DB_DIR).mkdir(parents=True, exist_ok=True)
-    return CHROMA_DB_DIR
+    """Persist path aligned with ingestion (CHROMA_DB_FILE_PATH, not only CHROMA_DB_DIR)."""
+    Path(CHROMA_DB_FILE_PATH).mkdir(parents=True, exist_ok=True)
+    return CHROMA_DB_FILE_PATH
 
 
 def format_doc(doc):
@@ -171,7 +173,14 @@ def merged_similarity_documents(chroma_collection_names: list[str], question: st
             continue
         seen.add(key)
         uniq.append(d)
-    return uniq[: max(SEARCH_K * 2, 8)]
+    result = uniq[: max(SEARCH_K * 2, 8)]
+    if chroma_collection_names and not result:
+        logger.info(
+            "rag_retrieval_empty chroma_collections=%s question_len=%s",
+            chroma_collection_names,
+            len(question or ""),
+        )
+    return result
 
 
 def merged_search_runnable(chroma_collection_names: list[str]):
