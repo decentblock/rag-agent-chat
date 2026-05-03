@@ -104,8 +104,11 @@ Do not use outside knowledge.
 Do not guess.
 Do not repeat the user's question.
 
-If the answer is not found in the GUIDELINES, respond exactly:
-i dont have enough information in the provided documents
+If the answer is not found in the GUIDELINES (or evidence is too thin to answer safely):
+- Say clearly that the available materials do not cover enough detail for a confident answer.
+- Ask one or two specific follow-up questions so you understand what they need (without guessing facts).
+- Invite them to share their email address and phone number so someone from the team can reach out.
+- Keep the reply concise and helpful. Do not use outside knowledge or fabricate policy.
 """.strip()
 
     human_message = """

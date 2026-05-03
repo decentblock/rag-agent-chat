@@ -213,6 +213,31 @@ class KbAuditEvent(db.Model):
     actor = db.relationship("User", foreign_keys=[actor_user_id])
 
 
+class ChatQueryAudit(db.Model):
+    """Tenant-scoped chat query + answer log; sources stored here only (not shown to end users)."""
+
+    __tablename__ = "chat_query_audits"
+
+    id = db.Column(db.String(36), primary_key=True, default=_uuid)
+    tenant_id = db.Column(db.String(36), db.ForeignKey("tenants.id"), nullable=False, index=True)
+    channel = db.Column(db.String(16), nullable=False, index=True)  # console | embed
+    actor_user_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True, index=True)
+    actor_username = db.Column(db.String(128), nullable=True)
+    embed_key_id = db.Column(db.String(36), db.ForeignKey("api_keys.id"), nullable=True, index=True)
+    visitor_session = db.Column(db.String(160), nullable=True)
+    agent_id = db.Column(db.String(64), nullable=False, index=True)
+    query_text = db.Column(db.Text, nullable=False)
+    answer_text = db.Column(db.Text, nullable=False, default="")
+    sources_json = db.Column(db.Text, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    collection_ids_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    tenant = db.relationship("Tenant", backref=db.backref("chat_query_audits", lazy="dynamic"))
+    actor = db.relationship("User", foreign_keys=[actor_user_id])
+    embed_key = db.relationship("ApiKey", foreign_keys=[embed_key_id])
+
+
 class UserAgentPreference(db.Model):
     """Per-user selected marketplace agent + JSON configuration."""
 

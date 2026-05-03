@@ -14,13 +14,21 @@
       title: "Chat",
       desc: "Uses your saved marketplace agent + collection scope.",
     },
+    "chat-audit": {
+      title: "Chat audit",
+      desc: "Console and embed transcripts with KB sources (not shown in chat UI).",
+    },
     library: {
       title: "Knowledge base",
       desc: "Upload files, browse collections, preview chunks, delete documents.",
     },
     embed: {
       title: "Embed",
-      desc: "Snippet, branding, visitor submissions, keys, CORS.",
+      desc: "Snippet, branding, embed keys, CORS.",
+    },
+    "visitor-leads": {
+      title: "Visitor leads",
+      desc: "Embed contact form submissions · export CSV.",
     },
     team: {
       title: "Team",
@@ -117,7 +125,7 @@
     const badge = document.getElementById("chat-agent-badge");
     const aid = agentPreference.agent_id;
     const row = marketplaceAgents.find((a) => a.agent_id === aid);
-    if (label) label.textContent = row ? row.name : aid;
+    if (label) label.textContent = displayNameForAgentId(aid);
     if (badge) {
       if (row && row.badge) {
         badge.hidden = false;
@@ -126,6 +134,17 @@
         badge.hidden = true;
       }
     }
+  }
+
+  function displayNameForAgentId(agentId) {
+    const row = marketplaceAgents.find((a) => a.agent_id === agentId);
+    const catalog = row ? row.name : agentId;
+    const names = agentPreference.config && agentPreference.config.agent_display_names;
+    if (names && typeof names === "object" && !Array.isArray(names)) {
+      const o = names[agentId];
+      if (o != null && String(o).trim()) return String(o).trim().slice(0, 120);
+    }
+    return catalog;
   }
 
   function iconGlyph(icon) {
@@ -159,7 +178,7 @@
             <div class="agent-card-icon">${escapeHtml(iconGlyph(a.icon))}</div>
             ${badgeHtml}
           </div>
-          <h4>${escapeHtml(a.name)}</h4>
+          <h4>${escapeHtml(displayNameForAgentId(a.agent_id))}</h4>
           <p class="tagline">${escapeHtml(a.tagline || "")}</p>
           <p class="desc">${escapeHtml(a.description || "")}</p>
           <span class="muted" style="font-size:0.78rem;">${escapeHtml(foot)}</span>
@@ -219,6 +238,20 @@
       agentPreference.agent_id === agent.agent_id
         ? Object.assign({}, agentPreference.config || {})
         : {};
+
+    const dnInput = document.getElementById("agent-display-name");
+    if (dnInput) {
+      const names = agentPreference.config && agentPreference.config.agent_display_names;
+      const saved =
+        names &&
+        typeof names === "object" &&
+        !Array.isArray(names) &&
+        names[agent.agent_id] != null
+          ? String(names[agent.agent_id])
+          : "";
+      dnInput.value = saved.trim();
+      dnInput.placeholder = agent.name || "Catalog name";
+    }
 
     renderModalFields(agent, cfg);
     dlg?.showModal();
@@ -295,6 +328,24 @@
   document.getElementById("agent-settings-save")?.addEventListener("click", async () => {
     if (!modalEditingAgent) return;
     const cfg = readModalConfig(modalEditingAgent);
+    const prevNamesRaw =
+      agentPreference.config && agentPreference.config.agent_display_names;
+    const prevNames =
+      prevNamesRaw &&
+      typeof prevNamesRaw === "object" &&
+      !Array.isArray(prevNamesRaw)
+        ? Object.assign({}, prevNamesRaw)
+        : {};
+    const dnRaw = (
+      document.getElementById("agent-display-name")?.value || ""
+    ).trim();
+    const catalogName = (modalEditingAgent.name || "").trim();
+    if (dnRaw && dnRaw !== catalogName) {
+      prevNames[modalEditingAgent.agent_id] = dnRaw.slice(0, 120);
+    } else {
+      delete prevNames[modalEditingAgent.agent_id];
+    }
+    if (Object.keys(prevNames).length) cfg.agent_display_names = prevNames;
     try {
       await persistAgentPreference(modalEditingAgent.agent_id, cfg);
     } catch (e) {
@@ -338,6 +389,20 @@
       if (tab === "embed") {
         refreshEmbedPanel().catch((err) =>
           toast(err.message || "Embed panel failed", "error")
+        );
+      }
+      if (tab === "chat-audit") {
+        chatAuditOffset = 0;
+        populateChatAuditKeyFilter()
+          .then(() => refreshChatAuditPanel())
+          .catch((err) =>
+            toast(err.message || "Chat audit failed", "error")
+          );
+      }
+      if (tab === "visitor-leads") {
+        visitorLeadsOffset = 0;
+        refreshVisitorLeadsPanel().catch((err) =>
+          toast(err.message || "Visitor leads failed", "error")
         );
       }
       if (tab === "team") {
@@ -396,6 +461,25 @@
     toast("Transcript cleared", "success");
   });
 
+  function removeChatTypingIndicator() {
+    document.getElementById("chat-typing-indicator")?.remove();
+  }
+
+  function appendChatTypingIndicator() {
+    if (!transcript) return;
+    removeChatTypingIndicator();
+    const div = document.createElement("div");
+    div.id = "chat-typing-indicator";
+    div.className = "chat-bubble assistant typing";
+    div.setAttribute("role", "status");
+    div.setAttribute("aria-live", "polite");
+    div.setAttribute("aria-label", "Assistant is typing");
+    div.innerHTML =
+      '<span class="typing-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
+    transcript.appendChild(div);
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+
   chatForm?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const msg = (chatInput?.value || "").trim();
@@ -406,6 +490,11 @@
 
     const coll =
       document.getElementById("collection-select")?.value?.trim() || "";
+
+    const btnSend = document.getElementById("btn-send-chat");
+    appendChatTypingIndicator();
+    if (btnSend) btnSend.disabled = true;
+    if (chatInput) chatInput.disabled = true;
 
     try {
       const reqBody = {
@@ -428,21 +517,17 @@
             ? JSON.stringify(data.answer)
             : "";
 
-      let citationsHtml = "";
-      if (Array.isArray(data.citations) && data.citations.length) {
-        citationsHtml =
-          '<div class="citations"><strong>Sources:</strong> ' +
-          escapeHtml(data.citations.join(", ")) +
-          "</div>";
-      }
-
-      appendBubble("assistant", escapeHtml(answerText) + citationsHtml);
+      appendBubble("assistant", escapeHtml(answerText));
     } catch (e) {
       toast(e.message || "Chat failed", "error");
       appendBubble(
         "assistant",
         '<span class="muted">Error: ' + escapeHtml(String(e.message || e)) + "</span>"
       );
+    } finally {
+      removeChatTypingIndicator();
+      if (btnSend) btnSend.disabled = false;
+      if (chatInput) chatInput.disabled = false;
     }
   });
 
@@ -916,45 +1001,266 @@
     }
   }
 
-  const EMBED_LEADS_PAGE = 50;
-  let embedLeadsOffset = 0;
+  const CHAT_AUDIT_PAGE = 50;
+  let chatAuditOffset = 0;
 
-  async function refreshEmbedVisitorLeads(retryOnOverrun) {
-    const tbody = document.getElementById("embed-leads-body");
-    const meta = document.getElementById("embed-leads-meta");
-    const prev = document.getElementById("embed-leads-prev");
-    const next = document.getElementById("embed-leads-next");
+  function getBootstrapBool(key) {
+    const el = document.getElementById("nexura-console-bootstrap");
+    return !!(el && el.dataset[key] === "true");
+  }
+
+  async function populateChatAuditKeyFilter() {
+    const sel = document.getElementById("chat-audit-key-filter");
+    if (!sel) return;
+    const prev = sel.value || "all";
+    sel.innerHTML = "";
+    sel.add(new Option("All queries", "all"));
+    sel.add(new Option("Console only", "console"));
+    if (getBootstrapBool("canManageEmbed")) {
+      try {
+        const data = await apiFetch("/api/v1/embed-keys");
+        const keys = data.keys || [];
+        keys.forEach((k) => {
+          const label = (k.name || k.key_prefix || k.id).slice(0, 80);
+          sel.add(new Option("Embed · " + label, k.id));
+        });
+      } catch {
+        /* Embed keys list unavailable — filter stays All / Console */
+      }
+    }
+    const allowed = Array.from(sel.options).some((o) => o.value === prev);
+    sel.value = allowed ? prev : "all";
+  }
+
+  function chatAuditColspan() {
+    return getBootstrapBool("canDeleteChatAudit") ? 7 : 6;
+  }
+
+  function truncateAuditText(s, maxLen) {
+    const t = (s || "").trim();
+    if (t.length <= maxLen) return t;
+    return t.slice(0, maxLen - 1) + "…";
+  }
+
+  async function refreshChatAuditPanel(retryOnOverrun) {
+    const tbody = document.getElementById("chat-audit-body");
+    const meta = document.getElementById("chat-audit-meta");
+    const prev = document.getElementById("chat-audit-prev");
+    const next = document.getElementById("chat-audit-next");
+    const fkEl = document.getElementById("chat-audit-key-filter");
+    if (!tbody) return;
+    const colspan = chatAuditColspan();
+    tbody.innerHTML =
+      '<tr><td colspan="' +
+      colspan +
+      '" class="muted center">Loading…</td></tr>';
+    const fk = fkEl ? fkEl.value || "" : "";
+    try {
+      const qs = new URLSearchParams({
+        limit: String(CHAT_AUDIT_PAGE),
+        offset: String(chatAuditOffset),
+      });
+      if (fk && fk !== "all") qs.set("embed_key", fk);
+      const data = await apiFetch(
+        "/api/v1/tenant/chat-query-audit?" + qs.toString()
+      );
+      let total = data.total ?? 0;
+      let items = data.items || [];
+      if (retryOnOverrun !== false && total > 0 && chatAuditOffset >= total) {
+        chatAuditOffset =
+          Math.max(
+            0,
+            Math.floor((total - 1) / CHAT_AUDIT_PAGE) * CHAT_AUDIT_PAGE
+          );
+        return refreshChatAuditPanel(false);
+      }
+      const start = total === 0 ? 0 : chatAuditOffset + 1;
+      const end = chatAuditOffset + items.length;
+      if (meta) {
+        meta.textContent = total
+          ? "Showing " + start + "–" + end + " of " + total
+          : "No logged queries yet.";
+      }
+      if (prev) prev.disabled = chatAuditOffset <= 0;
+      if (next) next.disabled = chatAuditOffset + items.length >= total;
+
+      const canDel = getBootstrapBool("canDeleteChatAudit");
+
+      if (!items.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="' +
+          colspan +
+          '" class="muted center">' +
+          (total ? "No rows on this page." : "No logged queries yet.") +
+          "</td></tr>";
+        return;
+      }
+
+      tbody.innerHTML = items
+        .map((row) => {
+          let srcLabel =
+            row.channel === "embed"
+              ? "Embed · " + (row.embed_key_name || row.embed_key_id || "key")
+              : "Console · " + (row.actor_username || "—");
+          if (row.channel === "embed" && row.visitor_session) {
+            srcLabel +=
+              " · sess " + truncateAuditText(row.visitor_session, 24);
+          }
+          const qShort = truncateAuditText(row.query_text, 160);
+          let ansShow = "";
+          if (row.error_message) {
+            ansShow = "Error: " + row.error_message;
+          } else {
+            ansShow = row.answer_text || "";
+          }
+          const ansShort = truncateAuditText(ansShow, 220);
+          const sources = Array.isArray(row.sources) ? row.sources : [];
+          const srcDetail =
+            sources.length === 0
+              ? '<span class="muted">—</span>'
+              : "<details><summary>" +
+                escapeHtml(String(sources.length)) +
+                ' source(s)</summary><ul style="margin:0.35rem 0 0 1rem;padding:0;font-size:0.82rem;max-width:18rem;">' +
+                sources
+                  .map(
+                    (s) =>
+                      '<li style="word-break:break-word;">' +
+                      escapeHtml(String(s)) +
+                      "</li>"
+                  )
+                  .join("") +
+                "</ul></details>";
+          const delCell = canDel
+            ? '<td class="col-actions"><button type="button" class="btn btn-ghost btn-sm btn-delete-chat-audit" data-id="' +
+              escapeAttr(row.id) +
+              '">Delete</button></td>'
+            : "";
+          return (
+            "<tr>" +
+            '<td style="font-size:0.82rem;white-space:nowrap">' +
+            escapeHtml(row.created_at || "—") +
+            "</td>" +
+            '<td style="font-size:0.82rem">' +
+            escapeHtml(srcLabel) +
+            "</td>" +
+            "<td>" +
+            escapeHtml(row.agent_id || "") +
+            "</td>" +
+            '<td style="max-width:14rem;font-size:0.82rem" title="' +
+            escapeAttr(row.query_text || "") +
+            '">' +
+            escapeHtml(qShort) +
+            "</td>" +
+            '<td style="max-width:16rem;font-size:0.82rem" title="' +
+            escapeAttr(ansShow) +
+            '">' +
+            escapeHtml(ansShort) +
+            "</td>" +
+            "<td>" +
+            srcDetail +
+            "</td>" +
+            delCell +
+            "</tr>"
+          );
+        })
+        .join("");
+    } catch (e) {
+      tbody.innerHTML =
+        '<tr><td colspan="' +
+        colspan +
+        '" class="muted center">' +
+        escapeHtml(e.message || "Failed to load") +
+        "</td></tr>";
+      if (meta) meta.textContent = "—";
+      if (prev) prev.disabled = true;
+      if (next) next.disabled = true;
+    }
+  }
+
+  document.getElementById("chat-audit-body")?.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest && ev.target.closest(".btn-delete-chat-audit");
+    if (!btn) return;
+    const id = btn.getAttribute("data-id");
+    if (!id || !confirm("Permanently delete this audit row? This cannot be undone."))
+      return;
+    try {
+      await apiFetch("/api/v1/tenant/chat-query-audit/" + encodeURIComponent(id), {
+        method: "DELETE",
+      });
+      toast("Deleted", "success");
+      await refreshChatAuditPanel();
+    } catch (e) {
+      toast(e.message || "Delete failed", "error");
+    }
+  });
+
+  document.getElementById("btn-refresh-chat-audit")?.addEventListener("click", () => {
+    chatAuditOffset = 0;
+    populateChatAuditKeyFilter()
+      .then(() => refreshChatAuditPanel())
+      .catch((e) => toast(e.message || "Refresh failed", "error"));
+  });
+
+  document.getElementById("chat-audit-key-filter")?.addEventListener("change", () => {
+    chatAuditOffset = 0;
+    refreshChatAuditPanel().catch((e) =>
+      toast(e.message || "Load failed", "error")
+    );
+  });
+
+  document.getElementById("chat-audit-prev")?.addEventListener("click", () => {
+    chatAuditOffset = Math.max(0, chatAuditOffset - CHAT_AUDIT_PAGE);
+    refreshChatAuditPanel().catch((e) =>
+      toast(e.message || "Load failed", "error")
+    );
+  });
+
+  document.getElementById("chat-audit-next")?.addEventListener("click", () => {
+    chatAuditOffset += CHAT_AUDIT_PAGE;
+    refreshChatAuditPanel().catch((e) =>
+      toast(e.message || "Load failed", "error")
+    );
+  });
+
+  const VISITOR_LEADS_PAGE = 50;
+  let visitorLeadsOffset = 0;
+
+  async function refreshVisitorLeadsPanel(retryOnOverrun) {
+    const tbody = document.getElementById("visitor-leads-body");
+    const meta = document.getElementById("visitor-leads-meta");
+    const prev = document.getElementById("visitor-leads-prev");
+    const next = document.getElementById("visitor-leads-next");
     if (!tbody) return;
     tbody.innerHTML =
       '<tr><td colspan="6" class="muted center">Loading…</td></tr>';
     try {
       const qs = new URLSearchParams({
-        limit: String(EMBED_LEADS_PAGE),
-        offset: String(embedLeadsOffset),
+        limit: String(VISITOR_LEADS_PAGE),
+        offset: String(visitorLeadsOffset),
       });
       const data = await apiFetch(
         "/api/v1/tenant/embed-visitor-leads?" + qs.toString()
       );
       let total = data.total ?? 0;
       let leads = data.leads || [];
-      if (retryOnOverrun !== false && total > 0 && embedLeadsOffset >= total) {
-        embedLeadsOffset =
+      if (retryOnOverrun !== false && total > 0 && visitorLeadsOffset >= total) {
+        visitorLeadsOffset =
           Math.max(
             0,
-            Math.floor((total - 1) / EMBED_LEADS_PAGE) * EMBED_LEADS_PAGE
+            Math.floor((total - 1) / VISITOR_LEADS_PAGE) * VISITOR_LEADS_PAGE
           );
-        return refreshEmbedVisitorLeads(false);
+        return refreshVisitorLeadsPanel(false);
       }
-      const start = total === 0 ? 0 : embedLeadsOffset + 1;
-      const end = embedLeadsOffset + leads.length;
+      const start = total === 0 ? 0 : visitorLeadsOffset + 1;
+      const end = visitorLeadsOffset + leads.length;
       if (meta) {
         meta.textContent = total
           ? "Showing " + start + "–" + end + " of " + total
           : "No submissions yet.";
       }
-      if (prev) prev.disabled = embedLeadsOffset <= 0;
+      if (prev) prev.disabled = visitorLeadsOffset <= 0;
       if (next)
-        next.disabled = embedLeadsOffset + leads.length >= total;
+        next.disabled = visitorLeadsOffset + leads.length >= total;
 
       if (!leads.length) {
         tbody.innerHTML =
@@ -975,6 +1281,11 @@
             '<td><span style="font-size:0.82rem">' +
             escapeHtml(row.created_at || "—") +
             "</span></td>" +
+            '<td title="' +
+            escapeAttr(msg) +
+            '"><span style="font-size:0.82rem">' +
+            escapeHtml(msgShort) +
+            "</span></td>" +
             "<td>" +
             escapeHtml(row.name || "") +
             "</td>" +
@@ -984,11 +1295,6 @@
             "<td>" +
             escapeHtml(row.phone || "") +
             "</td>" +
-            '<td title="' +
-            escapeAttr(msg) +
-            '"><span style="font-size:0.82rem">' +
-            escapeHtml(msgShort) +
-            "</span></td>" +
             '<td><span style="font-size:0.82rem">' +
             escapeHtml(keyLabel) +
             "</span></td>" +
@@ -1007,7 +1313,7 @@
     }
   }
 
-  async function exportEmbedVisitorLeadsCsv() {
+  async function exportVisitorLeadsCsv() {
     const res = await fetch("/api/v1/tenant/embed-visitor-leads/export", {
       credentials: "same-origin",
     });
@@ -1040,8 +1346,6 @@
     await populateEmbedAgentSelect();
     await populateEmbedCollectionMultiselect();
     await refreshEmbedKeysList();
-    embedLeadsOffset = 0;
-    await refreshEmbedVisitorLeads();
   }
 
   document.getElementById("btn-copy-embed-snippet")?.addEventListener("click", async () => {
@@ -1061,29 +1365,29 @@
     );
   });
 
-  document.getElementById("btn-refresh-embed-leads")?.addEventListener("click", () => {
-    embedLeadsOffset = 0;
-    refreshEmbedVisitorLeads().catch((e) =>
+  document.getElementById("btn-refresh-visitor-leads")?.addEventListener("click", () => {
+    visitorLeadsOffset = 0;
+    refreshVisitorLeadsPanel().catch((e) =>
       toast(e.message || "Refresh failed", "error")
     );
   });
 
-  document.getElementById("btn-export-embed-leads")?.addEventListener("click", () => {
-    exportEmbedVisitorLeadsCsv().catch((e) =>
+  document.getElementById("btn-export-visitor-leads")?.addEventListener("click", () => {
+    exportVisitorLeadsCsv().catch((e) =>
       toast(e.message || "Export failed", "error")
     );
   });
 
-  document.getElementById("embed-leads-prev")?.addEventListener("click", () => {
-    embedLeadsOffset = Math.max(0, embedLeadsOffset - EMBED_LEADS_PAGE);
-    refreshEmbedVisitorLeads().catch((e) =>
+  document.getElementById("visitor-leads-prev")?.addEventListener("click", () => {
+    visitorLeadsOffset = Math.max(0, visitorLeadsOffset - VISITOR_LEADS_PAGE);
+    refreshVisitorLeadsPanel().catch((e) =>
       toast(e.message || "Load failed", "error")
     );
   });
 
-  document.getElementById("embed-leads-next")?.addEventListener("click", () => {
-    embedLeadsOffset += EMBED_LEADS_PAGE;
-    refreshEmbedVisitorLeads().catch((e) =>
+  document.getElementById("visitor-leads-next")?.addEventListener("click", () => {
+    visitorLeadsOffset += VISITOR_LEADS_PAGE;
+    refreshVisitorLeadsPanel().catch((e) =>
       toast(e.message || "Load failed", "error")
     );
   });

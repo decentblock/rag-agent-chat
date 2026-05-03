@@ -52,7 +52,11 @@ After you run the app: **`/docs`** is the **Swagger/OpenAPI** explorer. **`FEATU
 - **`GET /health`** — Liveness  
 - **`GET /api/marketplace/agents`** — Public catalog JSON  
 - **`POST /login`** — Form: `tenant_slug`, `username`, `password`  
-- **`POST /api/embed/chat`** — JSON + embed API key header (see **`docs/TECHNICAL.md`**).  
+- **`POST /chat`** — Session chat (KB source filenames are **not** returned to the client; they are stored in **`chat_query_audits`** — see **Chat audit** in the console).  
+- **`POST /api/embed/chat`** — JSON + embed API key header (same citation behaviour as **`/chat`**).  
+- **`GET /api/embed/widget-config`** · **`POST /api/embed/visitor-contact`** — Widget branding / optional contact gate: optional comment first, then name, email, and phone (Bearer embed key + CORS).  
+- **`GET` / `PUT /api/v1/tenant/embed-branding`** · **`GET /api/v1/tenant/embed-visitor-leads`** (+ CSV export) — Org embed settings and visitor form submissions (**`embed:keys`**).  
+- **`GET /api/v1/tenant/chat-query-audit`** · **`DELETE /api/v1/tenant/chat-query-audit/<id>`** — Transcript audit (**`documents:read`** / **`documents:write`** for delete).  
 - **`/static/embed/nexura-chat.js`** — Customer-site widget (snippet in console **Embed** tab).
 
 See **`docs/TECHNICAL.md`** for every route, permission, and request/response shape.
@@ -70,7 +74,9 @@ See **`docs/TECHNICAL.md`** for every route, permission, and request/response sh
 | `agent_catalog.py` | Marketplace metadata |
 | `agents/` | Registry + built-in agents |
 | `services/chat_execution.py` | Shared `run_chat_turn` for session + embed chat |
+| `services/chat_query_audit.py` | Persist chat transcripts + KB sources; strip citations from API responses |
 | `services/embed_key_service.py` | Mint / verify embed API keys |
+| `services/embed_visitor_flow.py` | Widget public config + visitor lead validation |
 | `static/embed/nexura-chat.js` | Customer-site widget |
 | `docs/` | FEATURES_SUMMARY, DEPLOYMENT, TECHNICAL |
 

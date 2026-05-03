@@ -22,6 +22,12 @@
       <span class="nav-icon" aria-hidden="true">💬</span>
       Chat
     </button>
+    {% if can_audit_chat %}
+    <button type="button" class="nav-item" data-tab="chat-audit">
+      <span class="nav-icon" aria-hidden="true">📋</span>
+      Chat audit
+    </button>
+    {% endif %}
     <button type="button" class="nav-item" data-tab="library">
       <span class="nav-icon" aria-hidden="true">📚</span>
       Knowledge base
@@ -30,6 +36,12 @@
       <span class="nav-icon" aria-hidden="true">🌐</span>
       Embed
     </button>
+    {% if can_manage_embed %}
+    <button type="button" class="nav-item" data-tab="visitor-leads">
+      <span class="nav-icon" aria-hidden="true">📇</span>
+      Visitor leads
+    </button>
+    {% endif %}
     {% if can_manage_users|default(false) %}
     <button type="button" class="nav-item" data-tab="team">
       <span class="nav-icon" aria-hidden="true">👥</span>
@@ -49,6 +61,12 @@
       <span class="nav-icon" aria-hidden="true">💬</span>
       Chat
     </a>
+    {% if can_audit_chat %}
+    <a href="{{ url_for('dashboard') }}?tab=chat-audit" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">📋</span>
+      Chat audit
+    </a>
+    {% endif %}
     <a href="{{ url_for('dashboard') }}?tab=library" class="nav-item nav-item-link">
       <span class="nav-icon" aria-hidden="true">📚</span>
       Knowledge base
@@ -57,6 +75,12 @@
       <span class="nav-icon" aria-hidden="true">🌐</span>
       Embed
     </a>
+    {% if can_manage_embed %}
+    <a href="{{ url_for('dashboard') }}?tab=visitor-leads" class="nav-item nav-item-link">
+      <span class="nav-icon" aria-hidden="true">📇</span>
+      Visitor leads
+    </a>
+    {% endif %}
     {% if can_manage_users|default(false) %}
     <a href="{{ url_for('dashboard') }}?tab=team" class="nav-item nav-item-link">
       <span class="nav-icon" aria-hidden="true">👥</span>

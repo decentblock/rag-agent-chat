@@ -644,6 +644,10 @@ def dashboard():
         current_user_id=g.current_user.id,
         is_superuser=bool(getattr(g.current_user, "is_superuser", False)),
         can_manage_users=user_has_permission(g.current_user, "users:manage"),
+        can_audit_chat=user_has_permission(g.current_user, "documents:read"),
+        can_delete_chat_audit=user_has_permission(g.current_user, "documents:write"),
+        can_manage_embed=user_has_permission(g.current_user, "embed:keys"),
+        chat_audit_colspan=7 if user_has_permission(g.current_user, "documents:write") else 6,
         spa_tabs_enabled=True,
     )
 
@@ -1068,6 +1072,7 @@ def put_my_agent_preference():
 def chat():
     from services.agent_preferences import get_preference
     from services.chat_execution import run_chat_turn
+    from services.chat_query_audit import chat_response_for_client, record_chat_query_audit
     from services.plan_enforcement import (
         agent_allowed_on_plan,
         chat_quota_blocked,
@@ -1077,6 +1082,9 @@ def chat():
     payload = request.get_json(force=True, silent=True) or {}
     logger.info("Starting chat")
     chat_message = str(payload.get("chat_message", "")).strip()
+    if not chat_message:
+        return jsonify({"error": "chat_message is required"}), 400
+
     pref = get_preference(g.current_user.id)
     payload_agent = str(payload.get("agent_id") or "").strip().lower()
     agent_id = payload_agent or str(pref.get("agent_id") or "rag_document_qa").strip().lower()
@@ -1097,17 +1105,40 @@ def chat():
         requested = ()
 
     normalized = normalize_collection_filter(str(g.tenant.id), requested)
+
+    def audit(*, answer_text: str = "", sources=None, error_message: str | None = None):
+        try:
+            record_chat_query_audit(
+                tenant_id=str(g.tenant.id),
+                channel="console",
+                actor_user_id=str(g.current_user.id),
+                actor_username=g.current_user.username,
+                embed_key_id=None,
+                visitor_session=None,
+                agent_id=agent_id,
+                query_text=chat_message,
+                answer_text=answer_text or "",
+                sources=list(sources or []),
+                error_message=error_message,
+                collection_ids=list(normalized),
+            )
+        except Exception:
+            logger.exception("chat_query_audit persist failed")
+
     if requested and not normalized:
+        audit(error_message="Invalid collection_ids for this tenant")
         return jsonify({"error": "Invalid collection_ids for this tenant"}), 400
 
     logger.info("Chat tenant=%s user=%s agent=%s", g.tenant.id, g.current_user.id, agent_id)
 
     blocked, qerr = chat_quota_blocked(g.tenant)
     if blocked:
+        audit(error_message=qerr)
         return jsonify({"error": qerr}), 429
 
     ok_plan, plan_err = agent_allowed_on_plan(g.tenant, agent_id)
     if not ok_plan:
+        audit(error_message=plan_err)
         return jsonify({"error": plan_err}), 403
 
     try:
@@ -1124,11 +1155,18 @@ def chat():
             client_hint=payload.get("client_hint"),
         )
         if err:
+            audit(error_message=err)
             return jsonify({"error": err}), 400
+        audit(
+            answer_text=str(result.get("answer") or ""),
+            sources=list(result.get("citations") or []),
+            error_message=None,
+        )
         record_successful_chat_turn(str(g.tenant.id))
-        return jsonify(result), 200
+        return jsonify(chat_response_for_client(result)), 200
     except Exception as exc:
         logger.exception("chat failed")
+        audit(error_message=str(exc))
         return jsonify({"error": str(exc)}), 500
 
 
@@ -1233,6 +1271,10 @@ def embed_chat():
 
     payload = request.get_json(force=True, silent=True) or {}
     chat_message = str(payload.get("chat_message", "")).strip()
+    if not chat_message:
+        return jsonify({"error": "chat_message is required"}), 400
+
+    visitor = str(payload.get("visitor_session") or "anon").strip()[:160] or "anon"
 
     key_cfg = default_agent_config(row)
     incoming_cfg = payload.get("agent_config")
@@ -1253,7 +1295,30 @@ def embed_chat():
     normalized, scope_err = normalize_embed_collection_scope(
         str(row.tenant_id), allowed_from_key, requested
     )
+
+    def audit(*, answer_text: str = "", sources=None, error_message: str | None = None):
+        from services.chat_query_audit import record_chat_query_audit
+
+        try:
+            record_chat_query_audit(
+                tenant_id=str(row.tenant_id),
+                channel="embed",
+                actor_user_id=None,
+                actor_username=None,
+                embed_key_id=str(row.id),
+                visitor_session=visitor,
+                agent_id=agent_id,
+                query_text=chat_message,
+                answer_text=answer_text or "",
+                sources=list(sources or []),
+                error_message=error_message,
+                collection_ids=list(normalized),
+            )
+        except Exception:
+            logger.exception("chat_query_audit persist failed")
+
     if scope_err:
+        audit(error_message=scope_err)
         return jsonify({"error": scope_err}), 400
 
     chroma_targets = list_chroma_physical_names(str(row.tenant_id), normalized)
@@ -1267,7 +1332,6 @@ def embed_chat():
         allowed_from_key,
     )
 
-    visitor = str(payload.get("visitor_session") or "anon").strip()[:160] or "anon"
     session_key = f"embed:{row.id}:{visitor}"
     user_label = f"embed:{row.id}"
 
@@ -1275,13 +1339,17 @@ def embed_chat():
 
     blocked, qerr = chat_quota_blocked(tenant_row)
     if blocked:
+        audit(error_message=qerr)
         return jsonify({"error": qerr}), 429
 
     ok_plan, plan_err = agent_allowed_on_plan(tenant_row, agent_id)
     if not ok_plan:
+        audit(error_message=plan_err)
         return jsonify({"error": plan_err}), 403
 
     try:
+        from services.chat_query_audit import chat_response_for_client
+
         result, err = run_chat_turn(
             tenant_id=str(row.tenant_id),
             user_id=user_label,
@@ -1295,7 +1363,13 @@ def embed_chat():
             client_hint=payload.get("client_hint"),
         )
         if err:
+            audit(error_message=err)
             return jsonify({"error": err}), 400
+        audit(
+            answer_text=str(result.get("answer") or ""),
+            sources=list(result.get("citations") or []),
+            error_message=None,
+        )
         try:
             tenant_row.embed_engagement_count = int(
                 getattr(tenant_row, "embed_engagement_count", 0) or 0
@@ -1304,9 +1378,10 @@ def embed_chat():
         except Exception:
             logger.exception("embed engagement counter failed")
         record_successful_chat_turn(str(row.tenant_id))
-        return jsonify(result), 200
+        return jsonify(chat_response_for_client(result)), 200
     except Exception as exc:
         logger.exception("embed chat failed")
+        audit(error_message=str(exc))
         return jsonify({"error": str(exc)}), 500
 
 
@@ -1423,10 +1498,10 @@ def tenant_embed_visitor_leads_export():
     w.writerow(
         [
             "created_at_utc",
+            "initial_message",
             "name",
             "email",
             "phone",
-            "initial_message",
             "visitor_session",
             "embed_key_name",
             "embed_key_id",
@@ -1438,10 +1513,10 @@ def tenant_embed_visitor_leads_export():
         w.writerow(
             [
                 ts,
+                (lead.initial_message or "").replace("\r\n", "\n").replace("\n", " ").strip(),
                 lead.name,
                 lead.email,
                 lead.phone or "",
-                (lead.initial_message or "").replace("\r\n", "\n").replace("\n", " ").strip(),
                 lead.visitor_session,
                 key_name or "",
                 lead.embed_key_id or "",
@@ -1458,6 +1533,39 @@ def tenant_embed_visitor_leads_export():
             "Cache-Control": "no-store",
         },
     )
+
+
+@app.route("/api/v1/tenant/chat-query-audit", methods=["GET"])
+@login_required
+@permission_required("documents:read")
+def tenant_chat_query_audit_list():
+    """Paginated chat transcripts with KB sources (audit-only; responses omit citations)."""
+    from services.chat_query_audit import list_audits_payload
+
+    tid = str(g.tenant.id)
+    try:
+        limit = int(request.args.get("limit", "50"))
+    except ValueError:
+        limit = 50
+    try:
+        offset = int(request.args.get("offset", "0"))
+    except ValueError:
+        offset = 0
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    fk = request.args.get("embed_key") or request.args.get("embed_key_id") or ""
+    return jsonify(list_audits_payload(tenant_id=tid, limit=limit, offset=offset, embed_key_filter=fk))
+
+
+@app.route("/api/v1/tenant/chat-query-audit/<audit_id>", methods=["DELETE"])
+@login_required
+@permission_required("documents:write")
+def tenant_chat_query_audit_delete(audit_id: str):
+    from services.chat_query_audit import delete_audit_row
+
+    if delete_audit_row(tenant_id=str(g.tenant.id), audit_id=str(audit_id)):
+        return jsonify({"ok": True}), 200
+    return jsonify({"error": "Not found"}), 404
 
 
 @app.route("/api/v1/embed-keys", methods=["GET"])

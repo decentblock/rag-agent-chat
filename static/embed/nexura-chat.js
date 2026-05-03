@@ -103,7 +103,13 @@
     ";color:#fff;font-weight:600;cursor:pointer;font-size:.85rem}" +
     ".nexura-send:disabled{opacity:.55;cursor:not-allowed}" +
     ".nexura-brand{font-size:.68rem;color:#94a3b8;text-align:center;padding:.25rem;flex-shrink:0}" +
-    ".nexura-lead-err{color:#b91c1c;font-size:.78rem;margin:0}";
+    ".nexura-lead-err{color:#b91c1c;font-size:.78rem;margin:0}" +
+    ".nexura-msg.typing{color:#64748b;font-size:.88rem;letter-spacing:.12em}" +
+    ".nexura-msg.typing .nexura-tdot span{display:inline-block;animation:nexura-emb-dot 1.2s ease-in-out infinite both}" +
+    ".nexura-msg.typing .nexura-tdot span:nth-child(1){animation-delay:0s}" +
+    ".nexura-msg.typing .nexura-tdot span:nth-child(2){animation-delay:.15s}" +
+    ".nexura-msg.typing .nexura-tdot span:nth-child(3){animation-delay:.3s}" +
+    "@keyframes nexura-emb-dot{0%,80%,100%{opacity:.35}40%{opacity:1}}";
 
   var style = document.createElement("style");
   style.textContent = css;
@@ -118,10 +124,10 @@
     '<div class="nexura-body">' +
     '<div class="nexura-lead-wrap">' +
     '<p class="muted nexura-lead-intro" style="margin:0;font-size:.82rem;color:#475569;line-height:1.45"></p>' +
+    '<label>Comments or details (optional)<textarea class="nexura-in-msg" rows="3" maxlength="2000" placeholder="What should we know? Questions, context, or how we can help…"></textarea></label>' +
     '<label>Name <span class="nexura-req">*</span><input type="text" class="nexura-in-name" autocomplete="name" maxlength="255" /></label>' +
     '<label>Email <span class="nexura-req">*</span><input type="email" class="nexura-in-email" autocomplete="email" maxlength="255" /></label>' +
-    '<label>Phone (optional)<input type="tel" class="nexura-in-phone" autocomplete="tel" maxlength="64" /></label>' +
-    '<label>Message (optional)<textarea class="nexura-in-msg" rows="2" maxlength="2000" placeholder="How can we help?"></textarea></label>' +
+    '<label>Phone <span class="nexura-req">*</span><input type="tel" class="nexura-in-phone" autocomplete="tel" maxlength="64" placeholder="So we can reach you" /></label>' +
     '<p class="nexura-lead-err" hidden></p>' +
     '<button type="button" class="nexura-lead-submit">Continue to chat</button>' +
     "</div>" +
@@ -212,7 +218,7 @@
     mainWrap.classList.toggle("nexura-show", !needLead);
     if (needLead) {
       leadIntro.textContent =
-        "Please share your details so we can assist you. Name and email are required.";
+        "Use the comment box above for context if you like. Name, email, and phone are required so our team can follow up.";
       inp.disabled = true;
       btnSend.disabled = true;
     } else {
@@ -241,7 +247,7 @@
       toggle(true);
       syncLeadVsChatLayout();
       if (leadWrap.classList.contains("nexura-show")) {
-        inName.focus();
+        inLeadMsg.focus();
       } else {
         inp.focus();
       }
@@ -254,16 +260,28 @@
     toggle(false);
   });
 
-  function addMsg(role, text, citations) {
+  function removeTypingMsg() {
+    var el = msgs.querySelector(".nexura-msg.typing");
+    if (el) el.remove();
+  }
+
+  function addTypingMsg() {
+    removeTypingMsg();
+    var div = document.createElement("div");
+    div.className = "nexura-msg a typing";
+    div.setAttribute("role", "status");
+    div.setAttribute("aria-live", "polite");
+    div.setAttribute("aria-label", "Assistant is typing");
+    div.innerHTML =
+      '<span class="nexura-tdot" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function addMsg(role, text) {
     var div = document.createElement("div");
     div.className = "nexura-msg " + (role === "user" ? "u" : "a");
     div.textContent = text;
-    if (citations && citations.length) {
-      var c = document.createElement("div");
-      c.className = "nexura-cites";
-      c.textContent = "Sources: " + citations.join(", ");
-      div.appendChild(c);
-    }
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
   }
@@ -274,6 +292,8 @@
     inp.value = "";
     addMsg("user", text);
     btnSend.disabled = true;
+    inp.disabled = true;
+    addTypingMsg();
 
     fetch(baseUrl + "/api/embed/chat", {
       method: "POST",
@@ -297,6 +317,7 @@
         });
       })
       .then(function (_ref) {
+        removeTypingMsg();
         var ok = _ref.ok;
         var data = _ref.body;
         if (!ok) {
@@ -310,18 +331,20 @@
           "assistant",
           typeof data.answer === "string"
             ? data.answer
-            : JSON.stringify(data.answer),
-          data.citations
+            : JSON.stringify(data.answer)
         );
       })
       .catch(function () {
+        removeTypingMsg();
         addMsg(
           "assistant",
           "Network error. Check your connection and CORS settings."
         );
       })
       .finally(function () {
+        removeTypingMsg();
         btnSend.disabled = false;
+        inp.disabled = false;
       });
   }
 
@@ -340,8 +363,8 @@
     var em = (inEmail.value || "").trim();
     var ph = (inPhone.value || "").trim();
     var lm = (inLeadMsg.value || "").trim();
-    if (!nm || !em) {
-      leadErr.textContent = "Name and email are required.";
+    if (!nm || !em || !ph) {
+      leadErr.textContent = "Name, email, and phone are required.";
       leadErr.hidden = false;
       return;
     }

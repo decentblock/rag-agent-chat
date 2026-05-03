@@ -21,7 +21,7 @@ def tenant_widget_public_dict(tenant: Tenant) -> dict:
 def validate_visitor_lead_payload(body: dict) -> tuple[dict | None, str | None]:
     name = str(body.get("name") or "").strip()
     email = str(body.get("email") or "").strip()
-    phone = str(body.get("phone") or "").strip() or None
+    phone = str(body.get("phone") or "").strip()
     message = str(body.get("message") or "").strip() or None
     visitor = str(body.get("visitor_session") or "").strip()[:160]
 
@@ -31,7 +31,9 @@ def validate_visitor_lead_payload(body: dict) -> tuple[dict | None, str | None]:
         return None, "email is required"
     if not _basic_email_ok(email):
         return None, "email format looks invalid"
-    if phone and len(phone) > 64:
+    if not phone:
+        return None, "phone is required"
+    if len(phone) > 64:
         return None, "phone is too long"
     if not visitor:
         return None, "visitor_session is required"

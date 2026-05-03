@@ -144,21 +144,21 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                         },
                         "collect_visitor_contact": {
                             "type": "boolean",
-                            "description": "When true, widget shows name/email gate before chat.",
+                            "description": "When true, widget shows contact gate (optional comment, then name/email/phone) before chat.",
                         },
                     },
                 },
                 "EmbedVisitorContactRequest": {
                     "type": "object",
-                    "required": ["name", "email", "visitor_session"],
+                    "required": ["name", "email", "phone", "visitor_session"],
                     "properties": {
                         "name": {"type": "string", "maxLength": 255},
                         "email": {"type": "string", "maxLength": 255},
-                        "phone": {"type": "string", "maxLength": 64, "nullable": True},
+                        "phone": {"type": "string", "maxLength": 64},
                         "message": {
                             "type": "string",
                             "nullable": True,
-                            "description": "Stored as initial_message on the lead row.",
+                            "description": "Optional comment shown first in the widget; stored as initial_message on the lead row.",
                         },
                         "visitor_session": {
                             "type": "string",
@@ -392,8 +392,8 @@ def build_openapi_spec(*, server_url: str) -> dict[str, Any]:
                     "tags": ["Embed"],
                     "summary": "Submit visitor details (embed contact gate)",
                     "description": (
-                        "Persists name and email (required), optional phone and message, keyed by visitor_session. "
-                        "Same auth and Origin rules as embed chat."
+                        "Persists visitor submission: optional message (comment), name, email, and phone (all contact fields required). "
+                        "Keyed by visitor_session. Same auth and Origin rules as embed chat."
                     ),
                     "operationId": "embedVisitorContact",
                     "security": [{"EmbedBearer": []}],

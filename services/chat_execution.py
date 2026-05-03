@@ -9,6 +9,15 @@ from agents.registry import registry as agent_registry
 
 from agent_catalog import validate_agent_choice
 
+# Keys stored in preference/config JSON for UI only — never passed into agent workflows.
+_UI_ONLY_AGENT_CONFIG_KEYS = frozenset({"agent_display_names"})
+
+
+def _agent_config_for_invoke(cfg: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(cfg, dict):
+        return {}
+    return {k: v for k, v in cfg.items() if k not in _UI_ONLY_AGENT_CONFIG_KEYS}
+
 
 def run_chat_turn(
     *,
@@ -30,6 +39,8 @@ def run_chat_turn(
     if not (chat_message or "").strip():
         return None, "chat_message is required"
 
+    invoke_cfg = _agent_config_for_invoke(merged_cfg)
+
     ctx = AgentInvocationContext(
         tenant_id=str(tenant_id),
         user_id=str(user_id),
@@ -38,7 +49,7 @@ def run_chat_turn(
         llm_route=str(llm_route),
         llm_config_ref=llm_config_ref,
         metadata={
-            "agent_config": merged_cfg,
+            "agent_config": invoke_cfg,
             "payload_hint": client_hint,
         },
     )

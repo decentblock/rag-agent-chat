@@ -23,6 +23,7 @@ This document describes the **latest_rag_application** codebase: architecture, c
 15. [Marketplace catalog](#15-marketplace-catalog)  
 16. [User agent preferences](#16-user-agent-preferences)  
 17. [HTTP API reference](#17-http-api-reference)  
+    - [§17.5a — Chat audit & embed tenant APIs](#175a-chat-audit--embed-tenant-apis)  
     - [§17.16 — Platform super APIs](#1716-platform-super-apis-apisuper)  
     - [Marketplace agents — operator summary](#marketplace-agents--operator-summary-super-admin)  
 18. [HTML / UI routes](#18-html--ui-routes)  
@@ -145,6 +146,10 @@ Defined in **`models.py`**.
 | `payment_provider_customer_id` | Optional external customer reference (e.g. Stripe id) |
 | `notes` | Free-form operator notes |
 | `allowed_agent_ids_json` | Optional JSON array of **`agent_id`** strings — narrows which agents are effective for this tenant (see **`resolved_allowed_agent_ids`** in **`services/plan_enforcement.py`**); **`NULL`/unset** means “follow plan catalogue only” |
+| `embed_agent_display_name` | Optional widget header title served to **`GET /api/embed/widget-config`** |
+| `embed_welcome_message` | Optional first assistant bubble copy after the visitor passes the contact gate |
+| `embed_collect_visitor_contact` | When **`true`** (default), widget shows name/email (+ optional phone/message) before chat |
+| `embed_engagement_count` | Integer incremented on each **successful** embedded chat turn (analytics) |
 
 ### 5.2 `permissions`
 
@@ -190,7 +195,15 @@ Tenant-scoped **embed / integration keys**: `name`, unique **`key_prefix`** (pub
 
 Issued secrets look like **`nxemb_<12 hex>_<48 hex>`** — shown **once** at creation. **`POST /api/embed/chat`** validates the Bearer / header token against this table (`authenticate_embed_key`).
 
-**Schema upgrades:** SQLAlchemy **`create_all()`** does not migrate every additive change automatically beyond **`_ensure_tenant_plan_columns()`**, **`_ensure_api_keys_columns()`**, and **`_ensure_user_is_superuser_column()`**. New tables such as **`system_settings`** and **`lead_inquiries`** appear on **`create_all()`** for new databases; for existing deployments without a table, restart after deploy or run migrations. For other columns, use a fresh DB for development or run explicit **`ALTER TABLE`** / migrations in production.
+**Schema upgrades:** SQLAlchemy **`create_all()`** does not migrate every additive change automatically beyond **`_ensure_tenant_plan_columns()`**, **`_ensure_api_keys_columns()`**, and **`_ensure_user_is_superuser_column()`**. New tables such as **`system_settings`**, **`lead_inquiries`**, **`kb_audit_events`**, **`embed_visitor_leads`**, and **`chat_query_audits`** appear on **`create_all()`** for new databases; for existing deployments without a table, restart after deploy or run migrations. For other columns (e.g. tenant embed widget columns added via **`_ensure_tenant_embed_widget_columns()`** in **`app.py`**), use a fresh DB for development or run explicit **`ALTER TABLE`** / migrations in production.
+
+### 5.11 `embed_visitor_leads`
+
+Rows created when visitors submit the embed **contact gate** (**`POST /api/embed/visitor-contact`**): **`tenant_id`**, **`embed_key_id`**, **`visitor_session`**, **`name`**, **`email`**, optional **`phone`**, optional **`initial_message`**, **`created_at`**. Listed/exported from the console **Visitor leads** tab (**`embed:keys`**).
+
+### 5.12 `chat_query_audits`
+
+Append-only **chat transcript** log for **console** and **embed** traffic: **`tenant_id`**, **`channel`** (`console` \| `embed`), optional **`actor_user_id`** / **`actor_username`**, optional **`embed_key_id`**, optional **`visitor_session`**, **`agent_id`**, **`query_text`**, **`answer_text`**, **`sources_json`** (KB citation strings — **not** returned to chat clients), optional **`error_message`**, optional **`collection_ids_json`**, **`created_at`**. Managed via **`GET`/`DELETE /api/v1/tenant/chat-query-audit…`** (see **§17.5a**).
 
 ---
 
@@ -319,6 +332,8 @@ Names are lowercased. Hyphens are removed from tenant and collection IDs before 
 3. **`run_chain_with_memory_tenant`** — runs LLM with conversation memory.  
 4. Response text + citation list built from doc metadata `source` (deduped).
 
+**Chat responses vs audit:** **`POST /chat`** and **`POST /api/embed/chat`** return JSON with **`citations` forced to `[]`** so end-user UIs and hosted widgets do not show raw KB filenames. The server still records full citation lists (and query/answer/error) in **`chat_query_audits`** via **`services/chat_query_audit.py`** (`record_chat_query_audit`); operators review them under console **Chat audit** (**`documents:read`**).
+
 Chat route passes **question** that may include prefixed blocks from agents (preferences + workflow). See agents section.
 
 ---
@@ -396,7 +411,7 @@ Public JSON: **`GET /api/marketplace/agents`** → `{ "agents": [ ... ] }`.
 - **`get_preference(user_id)`** — defaults to `{ "agent_id": "rag_document_qa", "config": {} }`.  
 - **`set_preference(user_id, agent_id, config)`** — upserts `UserAgentPreference`, stores `config` as JSON object.
 
-Chat merges saved `config` with optional per-request `agent_config` (request overrides keys).
+Chat merges saved `config` with optional per-request `agent_config` (request overrides keys). Optional **`config.agent_display_names`** maps **`agent_id` → custom label** for the console UI only; **`services/chat_execution._invoke_agent_config`** strips **`agent_display_names`** before passing metadata into agents so workflow prompts never receive that map.
 
 ---
 
@@ -447,17 +462,16 @@ Unless stated, JSON bodies use `Content-Type: application/json`. Authenticated r
 - **Plan / metering:** same **`Tenant`** as the key — inactive tenant → **`403`** `Organisation suspended`; **`chat_quota_blocked`** → **`429`**, **`agent_allowed_on_plan`** → **`403`**; **`record_successful_chat_turn`** after a successful **`run_chat_turn`**.  
 - **CORS:** **`Origin`** must match the key’s **`allowed_embed_origins`** when that list is non-empty; otherwise platform embed CORS (**`system_settings.embed_cors_origins`** / **`EMBED_CORS_ORIGINS`**), including **`*`**. Mismatch → **`403`** `Origin not allowed for this embed key`.  
 - **Errors:** `401` invalid key · **`403`** suspended org / agent not enabled / Origin blocked · `400` validation / scope  
+- **Audit:** each handled attempt (including quota/plan/validation failures after a non-empty **`chat_message`**) appends **`chat_query_audits`**; successful JSON responses use **`chat_response_for_client`** so **`citations` is always `[]`**.
 
 #### `GET /api/v1/embed-keys` · `POST /api/v1/embed-keys` · `PATCH /api/v1/embed-keys/<key_id>` · `DELETE /api/v1/embed-keys/<key_id>`
-
-- **Auth:** session · **Permission:** **`embed:keys`** (Admin has `*`; Editors receive **`embed:keys`** from seed / backfill).  
 - **`GET`:** **`200`** `{ "keys": [ { id, name, key_prefix, is_active, allowed_collection_ids, allowed_embed_origins, default_agent_id, default_agent_config, created_at }, ... ] }` — response omits secret hashes and never returns full **`api_key`**.  
 - **`POST` body:** `{ "name": string (required), "allowed_collection_ids"?: string[], "allowed_embed_origins"?: string[] (optional per-key Origin allow-list; omit for platform default), "default_agent_id"?: string, "default_agent_config"?: object }` — **`POST`** also enforces **`check_can_add_embed_key`** (**`403`** at **`max_embed_keys`**) and **`agent_allowed_on_plan`** for **`default_agent_id`** when set (**`403`**).  
 - **`POST` response `201`:** `{ id, api_key, key_prefix, allowed_collection_ids, allowed_embed_origins }` — **`api_key`** plaintext **shown once**.  
 - **`PATCH` body:** `{ "allowed_embed_origins": string[] }` — updates per-key sites only (**empty array** clears override → platform default). **`404`** unknown key.  
 - **`DELETE`:** **`200`** `{ ok: true }` — sets **`is_active = false`** (soft revoke).  
 
-Static widget script: **`GET /static/embed/nexura-chat.js`** — register with **`defer`**, **`data-api-key`**, **`data-base-url`**; optional **`data-title`**, **`data-accent`** (6-digit `#RRGGBB`). Snippet is generated on the console **Embed** tab (**`/app`**).
+Static widget script: **`GET /static/embed/nexura-chat.js`** — register with **`defer`**, **`data-api-key`**, **`data-base-url`**; optional **`data-title`**, **`data-accent`** (6-digit `#RRGGBB`), **`data-collection-ids`**. Loads **`GET /api/embed/widget-config`** for title/welcome/contact gate. Snippet is generated on the console **Embed** tab (**`/app`**).
 
 ### 17.5 `POST /chat`
 
@@ -489,14 +503,59 @@ Static widget script: **`GET /static/embed/nexura-chat.js`** — register with *
 ```json
 {
   "answer": "string",
-  "citations": ["source strings"],
+  "citations": [],
   "agent_id": "string",
   "usage": {},
   "extra": {}
 }
 ```
 
+*(The **`citations` array is always empty** in HTTP responses. KB source strings are stored only in **`chat_query_audits`** — console **Chat audit**.)*
+
+- **Audit:** same **`chat_query_audits`** behaviour as **`POST /api/embed/chat`** for qualifying requests.
+
 - **Errors:** `400` validation; `401`; `403`; `429` quota; `500` with message
+
+### 17.5a Chat audit & embed tenant APIs
+
+#### `GET /api/embed/widget-config`
+
+- **Auth:** Bearer **`nxemb_…`** (same as embed chat) · **`Origin`** must be allowed for the key / platform CORS.  
+- **Response:** `200` **`{ agent_display_name?, welcome_message?, collect_visitor_contact }`** — public widget copy for **`nexura-chat.js`**.
+
+#### `POST /api/embed/visitor-contact`
+
+- **Auth / CORS:** same as embed chat.  
+- **Body:** **`{ name, email, visitor_session, phone?, message? }`** — **`name`**, **`email`**, **`visitor_session`** required.  
+- **Success:** `200` **`{ ok: true }`** — persists **`embed_visitor_leads`**.
+
+#### `GET` / `PUT /api/v1/tenant/embed-branding`
+
+- **Auth:** session · **Permission:** **`embed:keys`**  
+- **`GET`:** widget title, welcome text, contact-gate flag, engagement counter (read-only).  
+- **`PUT`:** JSON updates title/welcome/contact flag (not the counter).
+
+#### `GET /api/v1/tenant/embed-visitor-leads`
+
+- **Auth:** session · **Permission:** **`embed:keys`**  
+- **Query:** **`limit`** (1–500), **`offset`**  
+- **Response:** **`{ tenant_id, total, limit, offset, leads: [ … ] }`**.
+
+#### `GET /api/v1/tenant/embed-visitor-leads/export`
+
+- **Auth:** session · **Permission:** **`embed:keys`**  
+- **Response:** CSV (**UTF-8**) attachment — up to **10000** newest rows.
+
+#### `GET /api/v1/tenant/chat-query-audit`
+
+- **Auth:** session · **Permission:** **`documents:read`**  
+- **Query:** **`limit`** (1–500), **`offset`**, optional **`embed_key`** — **`all`** / omit (everything), **`console`** (no embed key), or an **`api_keys.id`** UUID to filter one embed key.  
+- **Response:** **`{ tenant_id, total, limit, offset, items: [ { id, created_at, channel, actor_username, embed_key_id, embed_key_name, visitor_session, agent_id, query_text, answer_text, sources[], collection_ids[], error_message }, … ] }`**.
+
+#### `DELETE /api/v1/tenant/chat-query-audit/<audit_id>`
+
+- **Auth:** session · **Permission:** **`documents:write`**  
+- **Success:** `200` **`{ ok: true }`** — permanent row delete · **`404`** if unknown id.
 
 ### 17.6 `POST /upload-document`
 
@@ -602,7 +661,7 @@ Use this when explaining **how marketplace rows relate to live chat** and **what
    - **Plan** (**`plan_slug`** on the tenant) — each tier’s **`allowed_agent_ids`** in **`plans_catalog.PLANS`** is either a **finite list** (e.g. Starter often **`["rag_document_qa"]`**) or **`null`** meaning **all installed** marketplace agents for that tier (**§24**).  
    - **Per-org agent allowlist** — **`PATCH`** body field **`allowed_agent_ids`** persists **`tenants.allowed_agent_ids_json`**. **`resolved_allowed_agent_ids`** (**`services/plan_enforcement.py`**) combines plan + tenant rules: finite plan list ⇒ **intersection** with the tenant list; plan **`null`** ⇒ tenant list is the whitelist (**empty array ⇒ no agents**). **`null`** in the PATCH clears the tenant override so the plan alone applies. The **Agents** card on **`/super/organisations`** mirrors this; rows are **disabled** when the agent is not allowed by the **current** plan or not **installed** on this server.
 
-4. **Personalisation (beyond the allowlist)** — **Per-user**: saved **`agent_id`** + **`config`** (**§16**). **Per embed key**: **`default_agent_id`** + **`agent_config_json`**. There is **no** dedicated tenant-wide “default agent / default config” column today; org-level shaping is **which agents are allowed** plus downstream user/key preferences.
+4. **Personalisation (beyond the allowlist)** — **Per-user**: saved **`agent_id`** + **`config`** (**§16**), including optional **`agent_display_names`** (stripped before agent invoke — **`services/chat_execution.py`**). **Per embed key**: **`default_agent_id`** + **`agent_config_json`**. **Embed widget copy** (title, welcome text, whether to collect visitor contact, engagement counter): **`Tenant`** **`embed_*`** fields · **`GET`/`PUT /api/v1/tenant/embed-branding`** (**§17.5a**). There is still **no** separate tenant-wide default **`agent_id`** outside preferences and keys.
 
 5. **Shipping a new agent** — Follow **§22 (Extension points), item 1**: implement **`Agent`**, **`registry.register`** in **`agents/bootstrap.py`**, add a **`MARKETPLACE_AGENTS`** entry with the same **`agent_id`** and **`available: True`**. Optionally add **`available: False`** rows as roadmap cards without code. If **Starter** (or any tier with a finite list) should expose the new agent, append its **`agent_id`** to that plan’s **`allowed_agent_ids`** in **`plans_catalog.py`**.
 
@@ -626,7 +685,7 @@ Cross-references: marketplace metadata **§15**, preferences **§16**, enforceme
 | `/logout` | POST | — | Clear session → `/` |
 | `/super/settings` | GET/POST | `login_required`, **`superuser_required`** | Platform marketing overrides + lead inbox |
 | `/super/organisations` | GET | `login_required`, **`superuser_required`** | Cross-tenant org console (plans, suspension, billing stubs, agents, users) |
-| `/app` | GET | `login_required` | Dashboard console (Overview, Agents, Chat, Knowledge base, **Embed**, **Team** when `users:manage`) |
+| `/app` | GET | `login_required` | Dashboard console: Overview, Agents, Chat, **Chat audit** (`documents:read`), Knowledge base, **Embed**, **Visitor leads** (`embed:keys`), **Team** (`users:manage`) |
 
 ---
 
@@ -636,13 +695,13 @@ Cross-references: marketplace metadata **§15**, preferences **§16**, enforceme
 - **`static/css/app.css`** — console layout  
 - **`static/css/landing.css`** — marketing  
 - **`static/css/docs.css`** — documentation typography  
-- **`static/js/app.js`** — dashboard tabs, marketplace, chat, library, **embed key CRUD + snippet UI**  
+- **`static/js/app.js`** — dashboard tabs (Overview, Agents, Chat, **Chat audit**, Knowledge base, **Embed**, **Visitor leads**, Team), marketplace, chat, library, embed keys + snippet + branding  
 - **`static/js/super_orgs.js`** — platform **Organisations** console (**`/super/organisations`**)  
-- **`static/embed/nexura-chat.js`** — customer-site floating chat widget (fetches **`POST /api/embed/chat`**)  
+- **`static/embed/nexura-chat.js`** — hosted widget: **`GET /api/embed/widget-config`**, optional **`POST /api/embed/visitor-contact`**, **`POST /api/embed/chat`** (responses omit citation lists)  
 
 Templates: **`templates/base.html`**, **`landing.html`**, **`login.html`**, **`register.html`**, **`dashboard.html`** (includes **`nexura-console-bootstrap`**), **`docs.html`** (Swagger UI only), **`super_settings.html`**, **`super_orgs.html`**, **`super_guides.html`**, **`super_technical.html`**.
 
-Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), **`services/embed_key_service.py`**, **`services/agent_preferences.py`**, **`services/plan_enforcement.py`**, **`services/super_org_admin.py`**, **`services/tenant_provisioning.py`**, **`plans_catalog.py`**.
+Backend modules (selected): **`services/chat_execution.py`** (`run_chat_turn`), **`services/chat_query_audit.py`**, **`services/embed_key_service.py`**, **`services/embed_visitor_flow.py`**, **`services/agent_preferences.py`**, **`services/plan_enforcement.py`**, **`services/super_org_admin.py`**, **`services/tenant_provisioning.py`**, **`plans_catalog.py`**.  
 
 ---
 

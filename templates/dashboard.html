@@ -6,7 +6,7 @@
 {% block body_class %}page-dashboard{% endblock %}
 {% block body %}
 
-<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" data-current-tenant-id="{{ current_tenant_id }}" data-is-superuser="{{ 'true' if is_superuser else 'false' }}" hidden aria-hidden="true"></div>
+<div id="nexura-console-bootstrap" data-app-origin="{{ app_origin }}" data-current-user-id="{{ current_user_id }}" data-current-tenant-id="{{ current_tenant_id }}" data-is-superuser="{{ 'true' if is_superuser else 'false' }}" data-can-delete-chat-audit="{{ 'true' if can_delete_chat_audit else 'false' }}" data-can-manage-embed="{{ 'true' if can_manage_embed else 'false' }}" hidden aria-hidden="true"></div>
 
 <div class="app-shell">
   {% include "partials/console_sidebar.html" %}
@@ -74,7 +74,7 @@
         </div>
         <div class="chat-toolbar">
           <p class="muted" style="margin:0;font-size:0.85rem;flex:1;">
-            Retrieval respects Knowledge base collection dropdown · tenant‑scoped memories · citations surfaced automatically.
+            Retrieval respects Knowledge base collection dropdown · tenant‑scoped memories · source filenames appear only under <strong>Chat audit</strong>, not in the assistant reply.
           </p>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-reset-chat">Clear transcript</button>
         </div>
@@ -88,6 +88,51 @@
         </form>
       </div>
     </section>
+
+    {% if can_audit_chat %}
+    <section id="panel-chat-audit" class="panel" hidden>
+      <article class="card card-elevated">
+        <div class="card-head">
+          <div>
+            <h3 class="card-title">Chat audit log</h3>
+            <p class="muted card-lead">
+              Console and embed queries with full replies. KB source filenames are stored here only (hidden from end-user chat).
+              {% if can_delete_chat_audit %}Rows can be permanently deleted.{% endif %}
+            </p>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-chat-audit">Refresh</button>
+        </div>
+        <label class="field" style="max-width:28rem;">
+          <span class="field-label">Filter by source</span>
+          <select id="chat-audit-key-filter" class="input"></select>
+          <span class="muted" style="font-size:0.78rem;">Console vs each embed key · listing embed keys requires Embed permission.</span>
+        </label>
+        <p id="chat-audit-meta" class="muted" style="margin:0.85rem 0;font-size:0.82rem;">—</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>When (UTC)</th>
+                <th>Source</th>
+                <th>Agent</th>
+                <th>Query</th>
+                <th>Answer</th>
+                <th>KB sources</th>
+                {% if can_delete_chat_audit %}<th class="col-actions">Delete</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody id="chat-audit-body">
+              <tr><td colspan="{{ chat_audit_colspan }}" class="muted center">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.65rem;">
+          <button type="button" class="btn btn-secondary btn-sm" id="chat-audit-prev" disabled>Previous</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="chat-audit-next" disabled>Next</button>
+        </div>
+      </article>
+    </section>
+    {% endif %}
 
     <section id="panel-library" class="panel" hidden>
       <div class="grid-stack">
@@ -215,48 +260,10 @@
             </label>
             <label class="field" style="display:flex;align-items:flex-start;gap:0.5rem;">
               <input type="checkbox" id="embed-brand-collect-contact" checked style="margin-top:0.2rem;" />
-              <span style="font-size:0.88rem;">Ask for contact details before chat <span class="muted">(name and email required · phone and message optional)</span></span>
+              <span style="font-size:0.88rem;">Ask for contact details before chat <span class="muted">(name, email, and phone required · optional comment first)</span></span>
             </label>
             <p class="muted" style="margin:0;font-size:0.85rem;">Embed engagements (all time): <strong id="embed-brand-engagement-count">—</strong></p>
             <button type="button" class="btn btn-primary" id="embed-branding-save">Save widget settings</button>
-          </div>
-        </article>
-
-        <article class="card card-elevated">
-          <div class="card-head">
-            <div>
-              <h3 class="card-title">Visitor submissions</h3>
-              <p class="muted card-lead">
-                Contacts captured when visitors complete the embed contact form (name and email required).
-                Export downloads up to 10,000 most recent rows as CSV.
-              </p>
-            </div>
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-              <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-embed-leads">Refresh</button>
-              <button type="button" class="btn btn-secondary btn-sm" id="btn-export-embed-leads">Export CSV</button>
-            </div>
-          </div>
-          <p id="embed-leads-meta" class="muted" style="margin:0 0 0.65rem;font-size:0.82rem;">—</p>
-          <div class="table-wrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Created (UTC)</th>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Message</th>
-                  <th>Embed key</th>
-                </tr>
-              </thead>
-              <tbody id="embed-leads-body">
-                <tr><td colspan="6" class="muted center">Loading…</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.65rem;">
-            <button type="button" class="btn btn-secondary btn-sm" id="embed-leads-prev" disabled>Previous</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="embed-leads-next" disabled>Next</button>
           </div>
         </article>
 
@@ -320,6 +327,48 @@
         </article>
       </div>
     </section>
+
+    {% if can_manage_embed %}
+    <section id="panel-visitor-leads" class="panel" hidden>
+      <article class="card card-elevated">
+        <div class="card-head">
+          <div>
+            <h3 class="card-title">Visitor submissions</h3>
+            <p class="muted card-lead">
+              Contacts captured when visitors complete the embed form (comments optional at top; name, email, and phone required).
+              Export downloads up to 10,000 most recent rows as CSV.
+            </p>
+          </div>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-visitor-leads">Refresh</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-export-visitor-leads">Export CSV</button>
+          </div>
+        </div>
+        <p id="visitor-leads-meta" class="muted" style="margin:0 0 0.65rem;font-size:0.82rem;">—</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Created (UTC)</th>
+                <th>Comment</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Embed key</th>
+              </tr>
+            </thead>
+            <tbody id="visitor-leads-body">
+              <tr><td colspan="6" class="muted center">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.65rem;">
+          <button type="button" class="btn btn-secondary btn-sm" id="visitor-leads-prev" disabled>Previous</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="visitor-leads-next" disabled>Next</button>
+        </div>
+      </article>
+    </section>
+    {% endif %}
 
     {% if can_manage_users %}
     <section id="panel-team" class="panel" hidden>
@@ -407,7 +456,12 @@
       </div>
       <button type="button" class="btn btn-ghost btn-sm" id="agent-settings-close">Close</button>
     </header>
-    <div id="agent-settings-fields" class="grid-stack" style="margin-top:1rem;gap:0.85rem;"></div>
+    <label class="field" style="margin-top:1rem;">
+      <span class="field-label">Display name</span>
+      <input type="text" id="agent-display-name" class="input" maxlength="120" placeholder="" autocomplete="off" />
+      <span class="muted" style="font-size:0.8rem;">Shown in chat and agent cards. Leave blank or match the catalog name to use the default.</span>
+    </label>
+    <div id="agent-settings-fields" class="grid-stack" style="margin-top:0.85rem;gap:0.85rem;"></div>
     <div style="display:flex;justify-content:flex-end;gap:0.65rem;margin-top:1.25rem;">
       <button type="button" class="btn btn-secondary" id="agent-settings-cancel">Cancel</button>
       <button type="button" class="btn btn-primary" id="agent-settings-save">Save &amp; use</button>
