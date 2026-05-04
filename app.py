@@ -1490,6 +1490,38 @@ def embed_chat():
         audit(error_message=plan_err)
         return jsonify({"error": plan_err}), 403
 
+    if getattr(tenant_row, "embed_collect_visitor_contact", False):
+        from services.chat_query_audit import chat_response_for_client
+        from services.embed_visitor_flow import try_persist_visitor_lead_from_embed_chat
+
+        contact_ack = try_persist_visitor_lead_from_embed_chat(
+            tenant_id=str(row.tenant_id),
+            embed_key_id=str(row.id),
+            visitor_session=visitor,
+            chat_message=chat_message,
+        )
+        if contact_ack:
+            audit(answer_text=contact_ack, sources=[], error_message=None)
+            try:
+                tenant_row.embed_engagement_count = int(
+                    getattr(tenant_row, "embed_engagement_count", 0) or 0
+                ) + 1
+                db.session.commit()
+            except Exception:
+                logger.exception("embed engagement counter failed")
+            record_successful_chat_turn(str(row.tenant_id))
+            return jsonify(
+                chat_response_for_client(
+                    {
+                        "answer": contact_ack,
+                        "citations": [],
+                        "agent_id": agent_id,
+                        "usage": None,
+                        "extra": {},
+                    }
+                )
+            ), 200
+
     try:
         from services.chat_query_audit import chat_response_for_client
         from services.embed_openai_credentials import openai_runtime_for_embed_row
